@@ -190,55 +190,29 @@ mod tests {
 
     #[test]
     fn test_all() {
-        let mut buf = std::fs::read("D:/test.flv").unwrap();
-
-        let mut exchange = exchange::Exchange::new();
-
-        let mut core = core::Core::new();
-        exchange.register(&mut core);
-
+        let mut buf = std::fs::read("D:/test_aac.flv").unwrap();
         let mut decoder = Decoder::new(VecDeque::from(buf));
-        exchange.register(&mut decoder);
-
-        let mut demuxer = Demuxer::new();
-        exchange.register(&mut demuxer);
-
-        let mut remuxer = Remuxer::new();
-        exchange.register(&mut remuxer);
-
-        let mut handles = vec![];
-        handles.push(decoder.launch_worker_thread());
-        handles.push(demuxer.launch_worker_thread());
-        handles.push(remuxer.launch_worker_thread());
-        handles.push(exchange.launch_worker_thread());
-
-        core.start().unwrap();
-        thread::sleep(Duration::from_secs(2));
-        println!("{:?}", core.get_codec_conf().unwrap());
+        decoder.start().unwrap();
+        decoder.run().unwrap();
+        println!("{:?}", decoder.get_codec_conf().unwrap());
         let mut output_file = std::fs::File::create("D:/output_aac.mp4").unwrap();
         let mut buf_written = 0;
-        loop {
-            if let Ok(buf) = core.consume() {
-                let buf = match buf {
-                    RemuxedData::Header(data) => data,
-                    RemuxedData::Audio(data) => data,
-                    RemuxedData::Video(data) => data,
-                };
-                buf_written += output_file.write(&buf).unwrap();
-                // todo: not sure why ffmpeg cannot convert the output file.
-                // consider skipping ffmpeg.
-            } else {
-                break;
-            }
+        while let Ok(packet) = decoder.consume() {
+            let data: Vec<u8> = match packet {
+                RemuxedData::Header(data) => data,
+                RemuxedData::Video(data) => {
+                    data
+                },
+                RemuxedData::Audio(data) => {
+                    data
+                },
+            };
+            let size = output_file.write(&data).unwrap();
+            buf_written += size;
         }
-        println!("File successfully written: {} KiBs in total.", buf_written / 1024);
-        match core.stop() {
-            Ok(_) => println!("Core stopped."),
-            Err(e) => panic!("Error: {}", e),
-        }
-        core.drop_all_workers().unwrap();
 
-        handles.reverse();
+        println!("File successfully written: {} KiBs in total.", buf_written / 1024);
+
 
 
         println!("Done.");

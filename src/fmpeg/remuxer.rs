@@ -1,5 +1,7 @@
+use std::any::Any;
+use crate::core::Core;
 use crate::exchange::PackedContentToCore::Data;
-use crate::exchange::{Destination, ExchangeRegistrable, MseDecoderConfig, Packed, PackedContent, PackedContentToCore, PackedContentToRemuxer, RemuxedData};
+use crate::exchange::{Destination, MseDecoderConfig, Packed, PackedContent, PackedContentToCore, PackedContentToRemuxer, RemuxedData};
 use crate::flv::header::FlvHeader;
 use crate::flv::meta::RawMetaData;
 use crate::flv::tag::{Tag, TagType};
@@ -9,14 +11,12 @@ use crate::fmpeg::parser::{parse_aac_timescale, parse_avc_timescale, parse_mp3_t
 use crate::fmpeg::remux_context::{RemuxContext, SampleContextBuilder, TrackContext, TrackType};
 use std::cmp::PartialEq;
 use std::collections::VecDeque;
-use std::sync::mpsc;
 use std::thread::JoinHandle;
 
 pub struct Remuxer {
-    channel_exchange: Option<mpsc::Sender<Packed>>,
-    channel_receiver: mpsc::Receiver<PackedContent>,
-    channel_sender: mpsc::Sender<PackedContent>,
     remuxing: bool,
+    pack_buffer: VecDeque<Packed>,
+    pub core: Core,
 
     tags: VecDeque<Tag>,
     metadata: Option<RawMetaData>,
@@ -28,20 +28,6 @@ pub struct Remuxer {
     video_track: TrackContext,
 
     _temp: Option<Vec<u8>>
-}
-
-impl ExchangeRegistrable for Remuxer {
-    fn set_exchange(&mut self, sender: mpsc::Sender<Packed>) {
-        self.channel_exchange = Some(sender);
-    }
-
-    fn get_sender(&self) -> mpsc::Sender<PackedContent> {
-        self.channel_sender.clone()
-    }
-
-    fn get_self_as_destination(&self) -> Destination {
-        Destination::Remuxer
-    }
 }
 
 impl PartialEq for KeyframeType {
@@ -56,12 +42,10 @@ impl PartialEq for KeyframeType {
 
 impl Remuxer {
     pub fn new() -> Self {
-        let (channel_sender, channel_receiver) = mpsc::channel();
         Self {
-            channel_exchange: None,
-            channel_receiver,
-            channel_sender,
             remuxing: false,
+            pack_buffer: VecDeque::new(),
+            core: Core::new(),
             tags: VecDeque::new(),
             metadata: None,
             flv_header: None,
@@ -81,10 +65,8 @@ impl Remuxer {
     }
 
     fn send(&mut self, pack: Packed) -> Result<(), Box<dyn std::error::Error>> {
-        match self.channel_exchange.as_ref().unwrap().send(pack) {
-            Ok(_) => Ok(()),
-            Err(e) => Err("[Remuxer] Channel closed.".into())
-        }
+        self.core.push_pack(pack);
+        Ok(())
     }
 
     fn send_mpeg4_header(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -117,10 +99,10 @@ impl Remuxer {
             }
         }
 
-        while let Some(ref tag) = self.tags.pop_front() {
+        while let Some(tag) = self.tags.pop_front() {
             match tag.tag_type {
                 TagType::Audio => {
-                    let parsed = Parser::parse_audio(tag)?;
+                    let parsed: AudioParseResult = Parser::parse_audio(&tag)?;
                     if self.ctx.is_configured() {
                         if !self.ctx.is_header_sent() {
                             self.send_mpeg4_header()?;
@@ -186,7 +168,7 @@ impl Remuxer {
                     }
                 }
                 TagType::Video => {
-                    let parsed = Parser::parse_video(tag)?;
+                    let parsed: VideoParseResult = Parser::parse_video(&tag)?;
                     if self.ctx.is_configured() {
                         if !self.ctx.is_header_sent() {
                             self.send_mpeg4_header()?;
@@ -222,6 +204,7 @@ impl Remuxer {
                             }
                         }
                     } else {
+                        println!("[Remuxer] Parsed video tag.");
                         if let Some(conf) = self.ctx.configure_video_metadata(&parsed) {
                             self.send(
                                 Packed {
@@ -244,58 +227,62 @@ impl Remuxer {
         Ok(())
     }
 
-    pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        loop {
-            if let Ok(received) = self.channel_receiver.recv() {
-                if let PackedContent::ToRemuxer(content) = received {
-                    match content {
-                        PackedContentToRemuxer::PushTag(tag) => {
-                            // println!("Pushed tag.");
-                            self.tags.push_back(tag);
-                        }
-                        PackedContentToRemuxer::PushFlvHeader(flv_header) => {
-                            println!("[Remuxer] Pushed flv header.");
-                            self.ctx.parse_flv_header(&flv_header);
-                            self.flv_header = Some(flv_header);
-                        }
-                        PackedContentToRemuxer::PushMetadata(metadata) => {
-                            println!("[Remuxer] Pushed metadata.");
-                            self.ctx.parse_metadata(&metadata);
-                            self.metadata = Some(metadata);
-                        }
-                        PackedContentToRemuxer::StartRemuxing => {
-                            println!("[Remuxer] Start remuxing.");
-                            self.set_remuxing(true)
-                        }
-                        PackedContentToRemuxer::StopRemuxing => {
-                            println!("[Remuxer] Stop remuxing.");
-                            self.set_remuxing(false)
-                        }
-                        PackedContentToRemuxer::CloseWorkerThread => {
-                            println!("[Remuxer] Closing remuxer thread.");
-                            return Ok(());
-                        }
-                        PackedContentToRemuxer::Now => { }
-                    }
-                }
-            } else {
-                println!("[Remuxer] Channel closed.");
-                break;
-            }
+    pub fn push_pack(&mut self, pack: Packed) {
+        self.pack_buffer.push_back(pack);
+    }
 
-            if !self.remuxing {
+    pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        while let Some(received) = self.pack_buffer.pop_front() {
+            if received.packed_routing != Destination::Remuxer {
+                self.core.push_pack(received);
                 continue;
             }
-
-            if self.ctx.is_metadata_complete() {
-                if self.remux().is_err() {
-                    println!("[Remuxer] Channel closed");
-                    break;
+            if let PackedContent::ToRemuxer(content) = received.packed_content {
+                match content {
+                    PackedContentToRemuxer::PushTag(tag) => {
+                        // println!("Pushed tag.");
+                        self.tags.push_back(tag);
+                    }
+                    PackedContentToRemuxer::PushFlvHeader(flv_header) => {
+                        println!("[Remuxer] Pushed flv header.");
+                        self.ctx.parse_flv_header(&flv_header);
+                        self.flv_header = Some(flv_header);
+                    }
+                    PackedContentToRemuxer::PushMetadata(metadata) => {
+                        println!("[Remuxer] Pushed metadata.");
+                        self.ctx.parse_metadata(&metadata);
+                        self.metadata = Some(metadata);
+                    }
+                    PackedContentToRemuxer::StartRemuxing => {
+                        println!("[Remuxer] Start remuxing.");
+                        self.set_remuxing(true)
+                    }
+                    PackedContentToRemuxer::StopRemuxing => {
+                        println!("[Remuxer] Stop remuxing.");
+                        self.set_remuxing(false)
+                    }
+                    PackedContentToRemuxer::CloseWorkerThread => {
+                        println!("[Remuxer] Closing remuxer thread.");
+                        return Ok(());
+                    }
+                    PackedContentToRemuxer::Now => { }
                 }
-            } else {
-                println!("[Remuxer] Not configured yet.");
             }
         }
+
+        if !self.remuxing {
+            return Ok(())
+        }
+
+        if self.ctx.is_metadata_complete() {
+            if self.remux().is_err() {
+                println!("[Remuxer] Remux error.");
+                return Ok(())
+            }
+        } else {
+            println!("[Remuxer] Not configured yet.");
+        }
+        self.core.process_incoming()?;
         Ok(())
     }
 

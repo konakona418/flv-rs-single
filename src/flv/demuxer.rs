@@ -1,19 +1,17 @@
-use std::collections::VecDeque;
-use crate::exchange::{Destination, ExchangeRegistrable, Packed, PackedContent, PackedContentToDemuxer, PackedContentToRemuxer};
-use std::sync::mpsc;
-use std::thread::JoinHandle;
+use crate::exchange::{Destination, Packed, PackedContent, PackedContentToDemuxer, PackedContentToRemuxer};
 use crate::flv::header::FlvHeader;
 use crate::flv::meta::RawMetaData;
 use crate::flv::tag::{NormalTagBody, Tag, TagBody, TagType};
+use std::collections::VecDeque;
+use std::thread::JoinHandle;
+use crate::fmpeg::remuxer::Remuxer;
 
 pub struct Demuxer {
-    channel_exchange: Option<mpsc::Sender<Packed>>,
-    channel_receiver: mpsc::Receiver<PackedContent>,
-    channel_sender: mpsc::Sender<PackedContent>,
+    pack_buffer: VecDeque<Packed>,
     demuxing: bool,
+    pub remuxer: Remuxer,
 
-    cache_video_tags: VecDeque<Tag>,
-    cache_audio_tags: VecDeque<Tag>,
+    cache_media_tags: VecDeque<Tag>,
     cache_script_tags: VecDeque<Tag>,
     cache_metadata: Option<RawMetaData>,
     cache_flv_header: Option<FlvHeader>,
@@ -21,14 +19,11 @@ pub struct Demuxer {
 
 impl Demuxer {
     pub fn new() -> Self {
-        let (channel_sender, channel_receiver) = mpsc::channel();
         Self {
-            channel_exchange: None,
-            channel_receiver,
-            channel_sender,
+            pack_buffer: VecDeque::new(),
             demuxing: false,
-            cache_video_tags: VecDeque::new(),
-            cache_audio_tags: VecDeque::new(),
+            remuxer: Remuxer::new(),
+            cache_media_tags: VecDeque::new(),
             cache_script_tags: VecDeque::new(),
             cache_metadata: None,
             cache_flv_header: None,
@@ -42,12 +37,8 @@ impl Demuxer {
     fn process_incoming_tag(&mut self, tag: Tag) {
         if tag.tag_type != TagType::Script {
             match tag.tag_type {
-                TagType::Audio => {
-                    self.cache_audio_tags.push_back(tag);
-                }
-                TagType::Video => {
-                    self.cache_video_tags.push_back(tag);
-                }
+                TagType::Audio => self.cache_media_tags.push_back(tag),
+                TagType::Video => self.cache_media_tags.push_back(tag),
                 _ => {}
             }
         } else {
@@ -63,14 +54,13 @@ impl Demuxer {
         }
     }
 
+    pub fn push_pack(&mut self, pack: Packed) {
+        self.pack_buffer.push_back(pack);
+    }
+
     fn send_to_remuxer(&mut self, pack: Packed) -> Result<(), Box<dyn std::error::Error>> {
-        match self.channel_exchange
-            .as_ref()
-            .unwrap()
-            .send(pack) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(e.into())
-        }
+        self.remuxer.push_pack(pack);
+        Ok(())
     }
 
     fn send_from_cache(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -90,18 +80,10 @@ impl Demuxer {
             self.send_to_remuxer(pack)?;
         }
 
-        while let Some(audio) = self.cache_audio_tags.pop_front() {
+        while let Some(audio) = self.cache_media_tags.pop_front() {
             let pack = Packed {
                 packed_routing: Destination::Remuxer,
                 packed_content: PackedContent::ToRemuxer(PackedContentToRemuxer::PushTag(audio)),
-            };
-            self.send_to_remuxer(pack)?;
-        }
-
-        while let Some(video) = self.cache_video_tags.pop_front() {
-            let pack = Packed {
-                packed_routing: Destination::Remuxer,
-                packed_content: PackedContent::ToRemuxer(PackedContentToRemuxer::PushTag(video)),
             };
             self.send_to_remuxer(pack)?;
         }
@@ -118,50 +100,50 @@ impl Demuxer {
     }
 
     pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        loop {
-            if let Ok(received) = self.channel_receiver.recv() {
-                match received {
-                    PackedContent::ToDemuxer(content) => {
-                        match content {
-                            PackedContentToDemuxer::PushTag(tag) => {
-                                // todo: implement tag processing.
-                                self.process_incoming_tag(tag);
-                            }
-                            PackedContentToDemuxer::PushFlvHeader(flv_header) => {
-                                println!("[Demuxer] Received flv header.");
-                                self.cache_flv_header = Some(flv_header);
-                            }
-                            PackedContentToDemuxer::StartDemuxing => {
-                                println!("[Demuxer] Start demuxing.");
-                                self.set_demuxing(true);
-                            }
-                            PackedContentToDemuxer::StopDemuxing => {
-                                println!("[Demuxer] Stop demuxing.");
-                                self.set_demuxing(false);
-                            }
-                            PackedContentToDemuxer::CloseWorkerThread => {
-                                println!("[Demuxer] Close worker thread.");
-                                return Ok(());
-                            }
-                            PackedContentToDemuxer::Now => {
-                                // just to temporarily remove thread blockage.
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            } else {
-                // todo: use a better way instead of recv().
-                println!("[Demuxer] Channel closed.");
-                return Ok(());
-            }
-
-            if !self.demuxing {
+        while let Some(received) = self.pack_buffer.pop_front() {
+            if received.packed_routing != Destination::Demuxer {
+                self.remuxer.push_pack(received);
                 continue;
             }
-
-            self.send_from_cache()?;
+            match received.packed_content {
+                PackedContent::ToDemuxer(content) => {
+                    match content {
+                        PackedContentToDemuxer::PushTag(tag) => {
+                            // todo: implement tag processing.
+                            self.process_incoming_tag(tag);
+                        }
+                        PackedContentToDemuxer::PushFlvHeader(flv_header) => {
+                            println!("[Demuxer] Received flv header.");
+                            self.cache_flv_header = Some(flv_header);
+                        }
+                        PackedContentToDemuxer::StartDemuxing => {
+                            println!("[Demuxer] Start demuxing.");
+                            self.set_demuxing(true);
+                        }
+                        PackedContentToDemuxer::StopDemuxing => {
+                            println!("[Demuxer] Stop demuxing.");
+                            self.set_demuxing(false);
+                        }
+                        PackedContentToDemuxer::CloseWorkerThread => {
+                            println!("[Demuxer] Close worker thread.");
+                            return Ok(());
+                        }
+                        PackedContentToDemuxer::Now => {
+                            // just to temporarily remove thread blockage.
+                        }
+                    }
+                }
+                _ => {}
+            }
         }
+
+        if !self.demuxing {
+            return Ok(());
+        }
+
+        self.send_from_cache()?;
+        self.remuxer.run()?;
+        Ok(())
     }
 
     /// Launch a worker thread, move the self into it.
@@ -172,19 +154,5 @@ impl Demuxer {
                 panic!("Demuxer worker thread stopped unexpectedly: {}", e);
             }
         })
-    }
-}
-
-impl ExchangeRegistrable for Demuxer {
-    fn set_exchange(&mut self, sender: mpsc::Sender<Packed>) {
-        self.channel_exchange = Some(sender);
-    }
-
-    fn get_sender(&self) -> mpsc::Sender<PackedContent> {
-        self.channel_sender.clone()
-    }
-
-    fn get_self_as_destination(&self) -> Destination {
-        Destination::Demuxer
     }
 }

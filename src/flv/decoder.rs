@@ -1,46 +1,30 @@
-use crate::exchange::{Destination, ExchangeRegistrable, Packed, PackedContent, PackedContentToDecoder, PackedContentToDemuxer};
+use crate::exchange::{Destination, Packed, PackedContent, PackedContentToDecoder, PackedContentToDemuxer, PackedContentToRemuxer, RemuxedData};
+use crate::flv::demuxer::Demuxer;
 use crate::flv::header::{AudioTagHeader, EncryptionTagHeader, FilterParameters, FlvHeader, TagHeader, VideoTagHeader};
 use crate::flv::script::ScriptTagBody;
 use crate::flv::tag::{EncryptedTagBody, NormalTagBody, Tag, TagBody, TagType};
 use crate::io::bit::BitIO;
 use std::collections::VecDeque;
-use std::sync::mpsc;
 use std::thread;
 use std::thread::JoinHandle;
+use crate::core::IConsumable;
 
 pub struct Decoder {
+    pack_buffer: VecDeque<Packed>,
     data: VecDeque<u8>,
     previous_tag_size: u32,
-    channel_exchange: Option<mpsc::Sender<Packed>>,
-    channel_receiver: mpsc::Receiver<PackedContent>,
-    channel_sender: mpsc::Sender<PackedContent>,
     decoding: bool,
-}
-
-impl ExchangeRegistrable for Decoder {
-    fn set_exchange(&mut self, sender: mpsc::Sender<Packed>) {
-        self.channel_exchange = Some(sender);
-    }
-
-    fn get_sender(&self) -> mpsc::Sender<PackedContent> {
-        self.channel_sender.clone()
-    }
-
-    fn get_self_as_destination(&self) -> Destination {
-        Destination::Decoder
-    }
+    demuxer: Demuxer
 }
 
 impl Decoder {
     pub fn new(data: VecDeque<u8>) -> Self {
-        let (channel_sender, channel_receiver) = mpsc::channel();
         Decoder {
+            pack_buffer: VecDeque::new(),
             data,
             previous_tag_size: 0,
-            channel_exchange: None,
-            channel_receiver,
-            channel_sender,
             decoding: false,
+            demuxer: Demuxer::new()
         }
     }
 
@@ -331,47 +315,50 @@ impl Decoder {
         self.decoding = flag;
     }
 
-    pub fn decode_body(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        loop {
-            if let Ok(received) = self.channel_receiver.recv() {
-                if let PackedContent::ToDecoder(packed_content) = received {
-                    match packed_content {
-                        PackedContentToDecoder::PushData(mut data) => {
-                            self.data.append(&mut data)
-                        }
-                        PackedContentToDecoder::StartDecoding => {
-                            println!("[Decoder] Start decoding.");
-                            self.set_decoding(true);
-                        }
-                        PackedContentToDecoder::StopDecoding => {
-                            println!("[Decoder] Stop decoding.");
-                            self.set_decoding(false);
-                        }
-                        PackedContentToDecoder::CloseWorkerThread => {
-                            println!("[Decoder] Closing worker thread.");
-                            return Ok(());
-                        }
-                        PackedContentToDecoder::Now => {
-                            // this will literally do nothing.
-                            // just applied to remove potential blockage.
-                        }
-                    }
-                }
-            } else {
-                // todo: use a better way to replace recv().
-                println!("[Decoder] Channel closed.");
-                return Ok(());
-            }
+    pub fn push_pack(&mut self, pack: Packed) {
+        self.pack_buffer.push_back(pack);
+    }
 
-            'decoding: loop {
-                if self.data.is_empty() || (!self.decoding) {
-                    break 'decoding;
-                }
-                if self.decode_body_once().is_err() {
-                    break 'decoding;
+    pub fn decode_body(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        while let Some(received) = self.pack_buffer.pop_front() {
+            if received.packed_routing != Destination::Decoder {
+                self.demuxer.push_pack(received);
+                continue;
+            }
+            if let PackedContent::ToDecoder(packed_content) = received.packed_content {
+                match packed_content {
+                    PackedContentToDecoder::PushData(mut data) => {
+                        self.data.append(&mut data)
+                    }
+                    PackedContentToDecoder::StartDecoding => {
+                        println!("[Decoder] Start decoding.");
+                        self.set_decoding(true);
+                    }
+                    PackedContentToDecoder::StopDecoding => {
+                        println!("[Decoder] Stop decoding.");
+                        self.set_decoding(false);
+                    }
+                    PackedContentToDecoder::CloseWorkerThread => {
+                        println!("[Decoder] Closing worker thread.");
+                        return Ok(());
+                    }
+                    PackedContentToDecoder::Now => {
+                        // this will literally do nothing.
+                        // just applied to remove potential blockage.
+                    }
                 }
             }
         }
+
+        'decoding: loop {
+            if self.data.is_empty() || (!self.decoding) {
+                break 'decoding;
+            }
+            if self.decode_body_once().is_err() {
+                break 'decoding;
+            }
+        }
+        Ok(())
     }
 
     pub fn decode_body_once(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -405,14 +392,8 @@ impl Decoder {
     }
 
     fn send_to_demuxer(&mut self, pack: Packed) -> Result<(), Box<dyn std::error::Error>> {
-        if let Err(e) = self.channel_exchange
-            .as_ref()
-            .unwrap()
-            .send(pack) {
-            Err(Box::new(e))
-        } else {
-            Ok(())
-        }
+        self.demuxer.push_pack(pack);
+        Ok(())
     }
 
     fn send_tag_to_demuxer(&mut self, tag: Tag) -> Result<(), Box<dyn std::error::Error>> {
@@ -431,7 +412,7 @@ impl Decoder {
         self.send_to_demuxer(pack)
     }
 
-    fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         loop {
             // this is to ensure the header is read.
             if let Ok(flv_header) = self.decode_header() {
@@ -439,8 +420,8 @@ impl Decoder {
                 break;
             }
         }
-        // todo: use a better way to control the decoding loop.
         self.decode_body()?;
+        self.demuxer.run()?;
         Ok(())
     }
 
@@ -453,5 +434,187 @@ impl Decoder {
                 panic!("Decoder thread stopped unexpectedly {}", e);
             }
         })
+    }
+}
+
+impl Decoder {
+
+    pub fn send(&mut self, pack: Packed) -> Result<(), Box<dyn std::error::Error>> {
+        self.pack_buffer.push_back(pack);
+        Ok(())
+    }
+
+    pub fn push_data_to_decoder(&mut self, data: &mut VecDeque<u8>) -> Result<(), Box<dyn std::error::Error>> {
+        self.data.append(data);
+        Ok(())
+    }
+
+    pub fn start(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.start_decoding()?;
+        self.start_demuxing()?;
+        self.start_remuxing()?;
+        Ok(())
+    }
+
+    fn start_decoding(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // todo: when the video stream is chunked, it's necessary to 'wait' for the next chunk than simply break the decoder loop.
+        self.send(
+            Packed {
+                packed_routing: Destination::Decoder,
+                packed_content: PackedContent::ToDecoder(
+                    PackedContentToDecoder::StartDecoding
+                ),
+            }
+        )
+    }
+
+    fn start_demuxing(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.send(
+            Packed {
+                packed_routing: Destination::Demuxer,
+                packed_content: PackedContent::ToDemuxer(
+                    PackedContentToDemuxer::StartDemuxing
+                ),
+            }
+        )
+    }
+
+    fn start_remuxing(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.send(
+            Packed {
+                packed_routing: Destination::Remuxer,
+                packed_content: PackedContent::ToRemuxer(
+                    PackedContentToRemuxer::StartRemuxing
+                ),
+            }
+        )
+    }
+
+    pub fn stop(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.stop_decoding()?;
+        self.stop_demuxing()?;
+        self.stop_remuxing()?;
+        Ok(())
+    }
+
+    fn stop_decoding(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.send(
+            Packed {
+                packed_routing: Destination::Decoder,
+                packed_content: PackedContent::ToDecoder(
+                    PackedContentToDecoder::StopDecoding
+                ),
+            }
+        )
+    }
+
+    fn stop_demuxing(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.send(
+            Packed {
+                packed_routing: Destination::Demuxer,
+                packed_content: PackedContent::ToDemuxer(
+                    PackedContentToDemuxer::StopDemuxing
+                ),
+            }
+        )
+    }
+
+    fn stop_remuxing(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.send(
+            Packed {
+                packed_routing: Destination::Remuxer,
+                packed_content: PackedContent::ToRemuxer(
+                    PackedContentToRemuxer::StopRemuxing
+                ),
+            }
+        )
+    }
+
+    pub fn now(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.decode_now()?;
+        self.demux_now()?;
+        self.remux_now()?;
+        Ok(())
+    }
+
+    fn decode_now(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.send(
+            Packed {
+                packed_routing: Destination::Decoder,
+                packed_content: PackedContent::ToDecoder(
+                    PackedContentToDecoder::Now
+                ),
+            }
+        )
+    }
+
+    fn demux_now(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.send(
+            Packed {
+                packed_routing: Destination::Demuxer,
+                packed_content: PackedContent::ToDemuxer(
+                    PackedContentToDemuxer::Now
+                ),
+            }
+        )
+    }
+
+    fn remux_now(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.send(
+            Packed {
+                packed_routing: Destination::Remuxer,
+                packed_content: PackedContent::ToRemuxer(
+                    PackedContentToRemuxer::Now
+                ),
+            }
+        )
+    }
+
+    pub fn drop_all_workers(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.drop_decoding_worker()?;
+        self.drop_demuxing_worker()?;
+        self.drop_remuxing_worker()?;
+        Ok(())
+    }
+
+    fn drop_decoding_worker(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.send(
+            Packed {
+                packed_routing: Destination::Decoder,
+                packed_content: PackedContent::ToDecoder(
+                    PackedContentToDecoder::CloseWorkerThread
+                ),
+            }
+        )
+    }
+
+    fn drop_demuxing_worker(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.send(
+            Packed {
+                packed_routing: Destination::Demuxer,
+                packed_content: PackedContent::ToDemuxer(
+                    PackedContentToDemuxer::CloseWorkerThread
+                ),
+            }
+        )
+    }
+
+    fn drop_remuxing_worker(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        self.send(
+            Packed {
+                packed_routing: Destination::Remuxer,
+                packed_content: PackedContent::ToRemuxer(
+                    PackedContentToRemuxer::CloseWorkerThread
+                ),
+            }
+        )
+    }
+
+    pub fn consume(&mut self) -> Result<RemuxedData, Box<dyn std::error::Error>> {
+        self.demuxer.remuxer.core.consume()
+    }
+
+    pub fn get_codec_conf(&mut self) -> Result<(String, String), Box<dyn std::error::Error>> {
+        self.demuxer.remuxer.core.get_codec_conf()
     }
 }
