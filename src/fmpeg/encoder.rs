@@ -1,8 +1,8 @@
-use crate::fmpeg::mp4frag::{MovieDataBox, MovieFragmentBox, SampleDependencyTableBoxBuilder, SampleFlagBuilder, TrackFragmentBox, TrackFragmentBoxBuilder, TrackRunBoxBuilder};
+use crate::fmpeg::mp4frag::{MergedSampleDependencyTableBoxBuilder, MergedTrackFragmentBox, MergedTrackFragmentBoxBuilder, MergedTrackRunBox, MergedTrackRunBoxEntryBuilder, MovieDataBox, MovieFragmentBox, SampleDependencyTableBoxBuilder, SampleFlagBuilder, TrackFragmentBox, TrackFragmentBoxBuilder, TrackRunBoxBuilder};
 use crate::fmpeg::mp4head;
 use crate::fmpeg::mp4head::aac_utils::AacAudioSpecConfLike;
 use crate::fmpeg::mp4head::{AudioMediaHandlerBox, FileTypeBox, FixedPoint32, HandlerType, MediaBox, MovieBox, MovieHeaderBox, SampleBoxTableBox, VideoMediaHandlerBox, XMediaHandlerBox};
-use crate::fmpeg::remux_context::{AudioCodecType, SampleContext, RemuxContext, TrackContext, TrackType, VideoCodecType, TIME_SCALE};
+use crate::fmpeg::remux_context::{AudioCodecType, RemuxContext, SampleContext, TrackContext, TrackType, VideoCodecType, TIME_SCALE};
 
 pub struct Encoder;
 
@@ -154,7 +154,7 @@ impl Encoder {
 
     // todo: implement moof & mdat encoding.
 
-    pub fn encode_moof(ctx: &mut RemuxContext, track_ctx: &mut TrackContext, encoding_ctx: &mut SampleContext) -> MovieFragmentBox {
+    pub fn encode_moof(ctx: &mut RemuxContext, track_ctx: &mut TrackContext, encoding_ctx: &mut SampleContext) -> MovieFragmentBox<TrackFragmentBox> {
         // todo: one sequence number only?
         let mut moof = MovieFragmentBox::new(
             ctx.sequence_number,
@@ -207,6 +207,74 @@ impl Encoder {
 
     pub fn encode_mdat(raw_data: Vec<u8>) -> MovieDataBox {
         let mdat = MovieDataBox::new(raw_data);
+        mdat
+    }
+
+    pub fn encode_moof_merged(ctx: &mut RemuxContext, track_ctx: &mut TrackContext, encoding_ctxes: &[SampleContext]) -> MovieFragmentBox<MergedTrackFragmentBox> {
+        let mut moof = MovieFragmentBox::new(
+            ctx.sequence_number,
+            Self::encode_traf_merged(ctx, track_ctx, encoding_ctxes),
+        );
+        moof.deferred_set_trun_size();
+        moof
+    }
+
+    pub fn encode_traf_merged(ctx: &mut RemuxContext, track_ctx: &mut TrackContext, encoding_ctxes: &[SampleContext]) -> MergedTrackFragmentBox {
+        let mut sdtp = MergedSampleDependencyTableBoxBuilder::new();
+        let mut trun = MergedTrackRunBox::new();
+
+        for encoding_ctx in encoding_ctxes {
+            sdtp = sdtp.add_entry(
+                match track_ctx.track_type {
+                    TrackType::Audio => {
+                        SampleDependencyTableBoxBuilder::Audio
+                    }
+                    TrackType::Video => {
+                        if encoding_ctx.is_keyframe {
+                            SampleDependencyTableBoxBuilder::VideoKeyFrame
+                        } else {
+                            SampleDependencyTableBoxBuilder::VideoInterFrame
+                        }
+                    }
+                }
+            );
+
+            trun.entries.push(
+                MergedTrackRunBoxEntryBuilder::new()
+                    .with_sample_composition_time_offset(encoding_ctx.composition_time_offset) // pts-dts
+                    .with_sample_size(encoding_ctx.sample_size)
+                    .with_sample_duration(encoding_ctx.sample_duration)
+                    .with_sample_flags(
+                        SampleFlagBuilder::new()
+                            .set_is_leading(encoding_ctx.is_leading)
+                            .set_is_non_sync(encoding_ctx.is_non_sync)
+                            .set_sample_has_redundancy(encoding_ctx.has_redundancy)
+                            .set_sample_depends_on(!encoding_ctx.is_keyframe)
+                            .set_sample_is_depended_on(encoding_ctx.is_keyframe)
+                            .build()
+                    )
+                    .build()
+            );
+        }
+
+
+
+        let sdtp = sdtp.build();
+        let traf = MergedTrackFragmentBoxBuilder::new()
+            .with_track_id(track_ctx.track_id)
+            .with_track_fragment_decode_time(encoding_ctxes[0].decode_time)
+            .with_merged_sample_table(sdtp)
+            .with_merged_track_run(trun)
+            .build();
+
+        ctx.sequence_number += 1;
+        traf
+    }
+
+    pub fn encode_mdat_merged(raw_data: Vec<Vec<u8>>) -> MovieDataBox {
+        let merged_vec = raw_data.into_iter().flatten().collect::<Vec<_>>();
+        println!("merged_vec size: {}", merged_vec.len());
+        let mdat = MovieDataBox::new(merged_vec);
         mdat
     }
 }

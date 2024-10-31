@@ -1,16 +1,16 @@
 use crate::fmpeg::mp4head::ISerializable;
 use crate::fmpeg::mp4head::U24;
 
-pub struct MovieFragmentBox {
+pub struct MovieFragmentBox<T: ISerializable + ITrackFragmentBoxLike> {
     pub size: u32,
     pub box_type: [char; 4],
 
     pub movie_fragment_header_box: MovieFragmentHeaderBox,
-    pub track_fragment_box: TrackFragmentBox,
+    pub track_fragment_box: T,
 }
 
-impl MovieFragmentBox {
-    pub fn new(sequence_number: u32, track_fragment_box: TrackFragmentBox) -> MovieFragmentBox {
+impl<T> MovieFragmentBox<T> where T: ISerializable + ITrackFragmentBoxLike {
+    pub fn new(sequence_number: u32, track_fragment_box: T) -> MovieFragmentBox<T> {
         MovieFragmentBox {
             size: 0,
             box_type: ['m', 'o', 'o', 'f'],
@@ -22,11 +22,11 @@ impl MovieFragmentBox {
     pub fn deferred_set_trun_size(&mut self) {
         let size= self.size();
         assert_ne!(size, 0);
-        self.track_fragment_box.track_run_box.data_offset = size + 8; // Magic!!
+        self.track_fragment_box.deferred_set_data_offset(size + 8); // Magic!!
     }
 }
 
-impl ISerializable for MovieFragmentBox {
+impl<T> ISerializable for MovieFragmentBox<T> where T: ISerializable + ITrackFragmentBoxLike {
     fn serialize(&mut self) -> Vec<u8> {
         self.size = self.size();
 
@@ -86,6 +86,10 @@ impl ISerializable for MovieFragmentHeaderBox {
     }
 }
 
+pub trait ITrackFragmentBoxLike {
+    fn deferred_set_data_offset(&mut self, data_offset: u32);
+}
+
 #[derive(Debug)]
 pub struct TrackFragmentBox {
     pub size: u32,
@@ -102,6 +106,12 @@ pub struct TrackFragmentBoxBuilder {
     pub track_fragment_decode_time_box: TrackFragmentDecodeTimeBox,
     pub sample_table_box: SampleDependencyTableBox,
     pub track_run_box: TrackRunBox,
+}
+
+impl ITrackFragmentBoxLike for TrackFragmentBox {
+    fn deferred_set_data_offset(&mut self, data_offset: u32) {
+        self.track_run_box.data_offset = data_offset;
+    }
 }
 
 impl TrackFragmentBoxBuilder {
@@ -326,6 +336,16 @@ impl SampleDependencyTableBoxBuilder {
     }
 }
 
+impl SampleDependencyTableBoxBuilder {
+    pub fn get_flags(&self) -> U24 {
+        match self {
+            SampleDependencyTableBoxBuilder::VideoKeyFrame => U24::from(0x18),
+            SampleDependencyTableBoxBuilder::VideoInterFrame => U24::from(0x24),
+            SampleDependencyTableBoxBuilder::Audio => U24::from(0x10),
+        }
+    }
+}
+
 impl ISerializable for SampleDependencyTableBoxBuilder {
     fn serialize(&mut self) -> Vec<u8> {
         let mut sd: SampleDependencyTableBox = match self {
@@ -339,7 +359,8 @@ impl ISerializable for SampleDependencyTableBoxBuilder {
     }
 
     fn size(&self) -> u32 {
-        16
+        // todo: this is a simplified version which supports only one sample per sample entry.
+        13
     }
 }
 
@@ -599,5 +620,310 @@ impl MovieDataBox {
     pub fn add_data(mut self, data: Vec<u8>) -> Self {
         self.data.extend(data);
         self
+    }
+}
+
+pub struct MergedSampleDependencyTableBox {
+    pub size: u32,
+    pub box_type: [char; 4],
+    pub version: u8,
+    pub flags: U24,
+
+    pub entries: Vec<SampleDependencyTableBoxBuilder>
+}
+
+impl MergedSampleDependencyTableBox {
+    pub fn new() -> MergedSampleDependencyTableBox {
+        MergedSampleDependencyTableBox {
+            size: 0,
+            box_type: ['s', 'd', 't', 'p'],
+            version: 0,
+            flags: U24::from(0),
+            entries: Vec::new()
+        }
+    }
+
+    pub fn add_entry(mut self, entry: SampleDependencyTableBoxBuilder) -> Self {
+        self.entries.push(entry);
+        self
+    }
+}
+
+impl ISerializable for MergedSampleDependencyTableBox {
+    fn serialize(&mut self) -> Vec<u8> {
+        self.size = self.size();
+
+        let mut result: Vec<u8> = Vec::new();
+        result.extend_from_slice(&self.size.to_be_bytes());
+        result.extend_from_slice(&self.box_type.map(|c| c as u8));
+        result.push(self.version);
+        result.extend_from_slice(&self.flags.serialize());
+        for entry in self.entries.iter_mut() {
+            result.extend(entry.as_box().sample_dependency_flags.to_be_bytes().to_vec());
+            self.flags = entry.get_flags();
+        }
+        assert_ne!(result.len(), 0);
+        result
+    }
+
+    fn size(&self) -> u32 {
+        12 + self.entries.len() as u32
+    }
+}
+
+pub struct MergedSampleDependencyTableBoxBuilder {
+    pub entries: Vec<SampleDependencyTableBoxBuilder>
+}
+
+impl MergedSampleDependencyTableBoxBuilder {
+    pub fn new() -> MergedSampleDependencyTableBoxBuilder {
+        MergedSampleDependencyTableBoxBuilder {
+            entries: Vec::new()
+        }
+    }
+
+    pub fn add_entry(mut self, entry: SampleDependencyTableBoxBuilder) -> Self {
+        self.entries.push(entry);
+        self
+    }
+
+    pub fn build(self) -> MergedSampleDependencyTableBox {
+        MergedSampleDependencyTableBox {
+            size: 0,
+            box_type: ['s', 'd', 't', 'p'],
+            version: 0,
+            flags: U24::from(0),
+            entries: self.entries
+        }
+    }
+}
+
+pub struct MergedTrackRunBoxEntry {
+    pub sample_duration: u32,
+    pub sample_size: u32,
+    pub sample_flags: u16,
+    pub reserved: u16,
+    pub sample_composition_time_offset: u32,
+}
+
+impl MergedTrackRunBoxEntry {
+    pub fn new(sample_duration: u32, sample_size: u32, sample_flags: u16, sample_composition_time_offset: u32) -> MergedTrackRunBoxEntry {
+        MergedTrackRunBoxEntry {
+            sample_duration,
+            sample_size,
+            sample_flags,
+            reserved: 0,
+            sample_composition_time_offset,
+        }
+    }
+}
+
+impl ISerializable for MergedTrackRunBoxEntry {
+    fn serialize(&mut self) -> Vec<u8> {
+        let mut result: Vec<u8> = Vec::new();
+        result.extend_from_slice(&self.sample_duration.to_be_bytes());
+        result.extend_from_slice(&self.sample_size.to_be_bytes());
+        result.extend_from_slice(&self.sample_flags.to_be_bytes());
+        result.extend_from_slice(&self.reserved.to_be_bytes());
+        result.extend_from_slice(&self.sample_composition_time_offset.to_be_bytes());
+        assert_eq!(result.len(), 16);
+        result
+    }
+
+    fn size(&self) -> u32 {
+        16
+    }
+}
+
+pub struct MergedTrackRunBoxEntryBuilder {
+    sample_duration: u32,
+    sample_size: u32,
+    sample_flags: u16,
+    sample_composition_time_offset: u32,
+}
+
+impl MergedTrackRunBoxEntryBuilder {
+    pub fn new() -> MergedTrackRunBoxEntryBuilder {
+        MergedTrackRunBoxEntryBuilder {
+            sample_duration: 0,
+            sample_size: 0,
+            sample_flags: 0,
+            sample_composition_time_offset: 0,
+        }
+    }
+
+    pub fn with_sample_duration(mut self, sample_duration: u32) -> MergedTrackRunBoxEntryBuilder {
+        self.sample_duration = sample_duration;
+        self
+    }
+
+    pub fn with_sample_size(mut self, sample_size: u32) -> MergedTrackRunBoxEntryBuilder {
+        self.sample_size = sample_size;
+        self
+    }
+
+    pub fn with_sample_flags(mut self, sample_flags: u16) -> MergedTrackRunBoxEntryBuilder {
+        self.sample_flags = sample_flags;
+        self
+    }
+
+    pub fn with_sample_composition_time_offset(mut self, sample_composition_time_offset: u32) -> MergedTrackRunBoxEntryBuilder {
+        self.sample_composition_time_offset = sample_composition_time_offset;
+        self
+    }
+
+    pub fn build(self) -> MergedTrackRunBoxEntry {
+        MergedTrackRunBoxEntry::new(self.sample_duration, self.sample_size, self.sample_flags, self.sample_composition_time_offset)
+    }
+}
+
+pub struct MergedTrackRunBox {
+    pub size: u32,
+    pub box_type: [char; 4],
+    pub version: u8,
+    pub flags: U24,
+
+    pub sample_count: u32,
+    pub data_offset: u32,
+
+    pub entries: Vec<MergedTrackRunBoxEntry>,
+}
+
+impl MergedTrackRunBox {
+    pub fn new() -> MergedTrackRunBox {
+        MergedTrackRunBox {
+            size: 0,
+            box_type: ['t', 'r', 'u', 'n'],
+            version: 0,
+            flags: U24::from(0x000F01),
+
+            sample_count: 0,
+            data_offset: 0,
+
+            entries: Vec::new(),
+        }
+    }
+
+    pub fn deferred_set_data_offset(mut self, data_offset: u32) -> MergedTrackRunBox {
+        self.data_offset = data_offset;
+        self
+    }
+}
+
+impl ISerializable for MergedTrackRunBox {
+    fn serialize(&mut self) -> Vec<u8> {
+        self.size = self.size();
+
+        self.sample_count = self.entries.len() as u32;
+
+        let mut result: Vec<u8> = Vec::new();
+        result.extend_from_slice(&self.size.to_be_bytes());
+        result.extend_from_slice(&self.box_type.map(|c| c as u8));
+        result.push(self.version);
+        result.extend_from_slice(&self.flags.serialize());
+        result.extend_from_slice(&self.sample_count.to_be_bytes());
+        result.extend_from_slice(&self.data_offset.to_be_bytes());
+        for entry in self.entries.iter_mut() {
+            result.extend_from_slice(&entry.serialize());
+        }
+        assert_ne!(result.len(), 0);
+        result
+    }
+
+    fn size(&self) -> u32 {
+        let mut size: u32 = 20;
+        for entry in self.entries.iter() {
+            size += entry.size();
+        }
+        size
+    }
+}
+
+pub struct MergedTrackFragmentBox {
+    pub size: u32,
+    pub box_type: [char; 4],
+
+    pub track_fragment_header_box: TrackFragmentHeaderBox,
+    pub track_fragment_decode_time_box: TrackFragmentDecodeTimeBox,
+    pub merged_sample_table_box: MergedSampleDependencyTableBox,
+    pub merged_track_run_box: MergedTrackRunBox,
+}
+
+impl ITrackFragmentBoxLike for MergedTrackFragmentBox {
+    fn deferred_set_data_offset(&mut self, data_offset: u32) {
+        self.merged_track_run_box.data_offset = data_offset;
+    }
+}
+
+impl ISerializable for MergedTrackFragmentBox {
+    fn serialize(&mut self) -> Vec<u8> {
+        self.size = self.size();
+
+        let mut result: Vec<u8> = Vec::new();
+        result.extend_from_slice(&self.size.to_be_bytes());
+        result.extend_from_slice(&self.box_type.map(|c| c as u8));
+        result.extend_from_slice(&self.track_fragment_header_box.serialize());
+        result.extend_from_slice(&self.track_fragment_decode_time_box.serialize());
+        result.extend_from_slice(&self.merged_sample_table_box.serialize());
+        result.extend_from_slice(&self.merged_track_run_box.serialize());
+        assert_ne!(result.len(), 0);
+        result
+    }
+
+    fn size(&self) -> u32 {
+        8 +
+        self.track_fragment_header_box.size() +
+        self.track_fragment_decode_time_box.size() +
+        self.merged_sample_table_box.size() +
+        self.merged_track_run_box.size()
+    }
+}
+
+pub struct MergedTrackFragmentBoxBuilder {
+    pub track_fragment_header_box: TrackFragmentHeaderBox,
+    pub track_fragment_decode_time_box: TrackFragmentDecodeTimeBox,
+    pub merged_sample_table_box: MergedSampleDependencyTableBox,
+    pub merged_track_run_box: MergedTrackRunBox,
+}
+
+impl MergedTrackFragmentBoxBuilder {
+    pub fn new() -> MergedTrackFragmentBoxBuilder {
+        MergedTrackFragmentBoxBuilder {
+            track_fragment_header_box: TrackFragmentHeaderBox::new(0),
+            track_fragment_decode_time_box: TrackFragmentDecodeTimeBox::new(0),
+            merged_sample_table_box: MergedSampleDependencyTableBox::new(),
+            merged_track_run_box: MergedTrackRunBox::new(),
+        }
+    }
+
+    pub fn with_track_id(mut self, track_id: u32) -> MergedTrackFragmentBoxBuilder {
+        self.track_fragment_header_box = TrackFragmentHeaderBox::new(track_id);
+        self
+    }
+
+    pub fn with_track_fragment_decode_time(mut self, decode_time: u32) -> MergedTrackFragmentBoxBuilder {
+        self.track_fragment_decode_time_box = TrackFragmentDecodeTimeBox::new(decode_time);
+        self
+    }
+
+    pub fn with_merged_sample_table(mut self, merged_sample_table: MergedSampleDependencyTableBox) -> MergedTrackFragmentBoxBuilder {
+        self.merged_sample_table_box = merged_sample_table;
+        self
+    }
+
+    pub fn with_merged_track_run(mut self, merged_track_run: MergedTrackRunBox) -> MergedTrackFragmentBoxBuilder {
+        self.merged_track_run_box = merged_track_run;
+        self
+    }
+
+    pub fn build(self) -> MergedTrackFragmentBox {
+        MergedTrackFragmentBox {
+            size: 0,
+            box_type: ['t', 'r', 'a', 'f'],
+            track_fragment_header_box: self.track_fragment_header_box,
+            track_fragment_decode_time_box: self.track_fragment_decode_time_box,
+            merged_sample_table_box: self.merged_sample_table_box,
+            merged_track_run_box: self.merged_track_run_box,
+        }
     }
 }

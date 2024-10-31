@@ -131,6 +131,20 @@ impl SampleContextBuilder {
     }
 }
 
+pub struct SequenceBufferEntry {
+    pub payload: Vec<u8>,
+    pub sample_ctx: SampleContext,
+}
+
+impl SequenceBufferEntry {
+    pub fn new(payload: Vec<u8>, sample_ctx: SampleContext) -> Self {
+        Self {
+            payload,
+            sample_ctx,
+        }
+    }
+}
+
 pub const TIME_SCALE: u32 = 24000;
 // Magic number!!
 // Using 1000 is not accurate enough, and will lead to audio/video sync issue (e.g. flaws, time mismatch, etc.)

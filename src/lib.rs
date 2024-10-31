@@ -199,7 +199,9 @@ mod tests {
         let mut buf_written = 0;
         while let Ok(packet) = decoder.consume() {
             let data: Vec<u8> = match packet {
-                RemuxedData::Header(data) => data,
+                RemuxedData::Header(data) => {
+                    data
+                },
                 RemuxedData::Video(data) => {
                     data
                 },
