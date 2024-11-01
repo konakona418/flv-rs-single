@@ -2,13 +2,13 @@ use std::any::Any;
 use crate::core::Core;
 use crate::exchange::PackedContentToCore::Data;
 use crate::exchange::{Destination, MseDecoderConfig, Packed, PackedContent, PackedContentToCore, PackedContentToRemuxer, RemuxedData};
-use crate::flv::header::FlvHeader;
+use crate::flv::header::{FlvHeader, TagHeader};
 use crate::flv::meta::RawMetaData;
 use crate::flv::tag::{Tag, TagType};
 use crate::fmpeg::encoder::{Encoder, DEFAULT_AUDIO_TRACK_ID, DEFAULT_VIDEO_TRACK_ID};
 use crate::fmpeg::mp4head::ISerializable;
-use crate::fmpeg::parser::{parse_aac_timescale, parse_avc_timescale, parse_mp3_timescale, parse_timescale, AudioParseResult, Avc1ParseResult, KeyframeType, Parser, VideoParseResult};
-use crate::fmpeg::remux_context::{RemuxContext, SampleContextBuilder, TrackContext, TrackType, SequenceBufferEntry};
+use crate::fmpeg::parser::{parse_aac_timescale, parse_avc_timescale, parse_mp3_timescale, parse_timescale, parse_timescale_signed, AudioParseResult, Avc1ParseResult, KeyframeType, Parser, VideoParseResult};
+use crate::fmpeg::remux_context::{RemuxContext, SampleContextBuilder, TrackContext, TrackType, VideoSequenceBufferEntry};
 use std::cmp::PartialEq;
 use std::collections::VecDeque;
 use std::thread::JoinHandle;
@@ -17,12 +17,14 @@ pub struct Remuxer {
     remuxing: bool,
     pack_buffer: VecDeque<Packed>,
     pub core: Core,
-    pub video_sequence_buffer: VecDeque<SequenceBufferEntry>,
-    pub audio_sequence_buffer: VecDeque<SequenceBufferEntry>,
+
+    video_sequence_buffer: VecDeque<VideoSequenceBufferEntry>,
+    video_dts_adjust: Option<u32>,
+
+    audio_sequence_buffer: VecDeque<VideoSequenceBufferEntry>,
+    audio_dts_adjust: Option<u32>,
 
     frame_count: u32,
-
-    first_video_dts: Option<u32>,
 
     tags: VecDeque<Tag>,
     metadata: Option<RawMetaData>,
@@ -52,11 +54,14 @@ impl Remuxer {
             remuxing: false,
             pack_buffer: VecDeque::new(),
             core: Core::new(),
+
             video_sequence_buffer: VecDeque::new(),
+            video_dts_adjust: None,
+
             audio_sequence_buffer: VecDeque::new(),
+            audio_dts_adjust: None,
 
             frame_count: 0,
-            first_video_dts: None,
 
             tags: VecDeque::new(),
             metadata: None,
@@ -124,55 +129,43 @@ impl Remuxer {
                         }
                         match parsed {
                             AudioParseResult::AacRaw(raw) => {
-                                if self.audio_sequence_buffer.len() <= 128 {
-                                    println!("pushed audio buffer");
-                                    let dts = if self.audio_sequence_buffer.is_empty() {
-                                        parse_aac_timescale(self.ctx.audio_sample_rate)
-                                    } else {
-                                        parse_timescale(tag.timestamp) - self.audio_sequence_buffer.back().unwrap().sample_ctx.decode_time
-                                    };
-                                    let sample_ctx = SampleContextBuilder::new()
+                                if !self.audio_sequence_buffer.is_empty() {
+                                    let mut prev_sample = self.audio_sequence_buffer.iter_mut().last().unwrap();
+
+                                    let prev_dts = prev_sample.sample_ctx.decode_time;
+                                    let current_dts = parse_timescale(tag.timestamp) - self.audio_dts_adjust.unwrap_or(0);
+
+                                    let prev_duration_corrected = current_dts - prev_dts;
+
+                                    prev_sample.sample_ctx.sample_duration = prev_duration_corrected;
+
+                                    let mut sample_ctx = SampleContextBuilder::new()
                                         .set_decode_time(parse_timescale(tag.timestamp))
                                         .set_sample_size(raw.len() as u32)
-                                        .set_sample_duration(dts)
+                                        .set_sample_duration(parse_aac_timescale(self.ctx.audio_sample_rate))
                                         .set_composition_time_offset(0)
                                         .build();
-                                    self.audio_sequence_buffer.push_back(SequenceBufferEntry::new(Vec::from(raw), sample_ctx));
-                                } else {
-                                    // pop all entries
-                                    println!("drained audio buffer");
-                                    let drained = self.audio_sequence_buffer.drain(..).collect::<Vec<_>>();
-                                    let mut all_data = Vec::new();
-                                    let mut contexts = Vec::new();
-                                    for mut entry in drained {
-                                        all_data.push(entry.payload);
-                                        contexts.push(entry.sample_ctx);
-                                    }
-                                    let mut send_data = Encoder::encode_moof_merged(&mut self.ctx, &mut self.audio_track, &mut contexts).serialize();
-                                    send_data.append(&mut Encoder::encode_mdat_merged(all_data).serialize());
-                                    self.send_raw_data(RemuxedData::Audio(send_data))?;
 
+                                    self.audio_sequence_buffer.push_back(VideoSequenceBufferEntry::new(Vec::from(raw), sample_ctx));
+
+                                    let front = self.audio_sequence_buffer.pop_front();
+                                    if let Some(mut front) = front {
+                                        let mut data = Encoder::encode_moof(&mut self.ctx, &mut self.audio_track, &mut front.sample_ctx).serialize();
+                                        data.append(&mut Encoder::encode_mdat(front.payload).serialize());
+                                        self.send_raw_data(RemuxedData::Audio(data))?;
+                                    }
+                                } else {
                                     let sample_ctx = SampleContextBuilder::new()
                                         .set_decode_time(parse_timescale(tag.timestamp))
                                         .set_sample_size(raw.len() as u32)
                                         .set_sample_duration(parse_aac_timescale(self.ctx.audio_sample_rate))
                                         .set_composition_time_offset(0)
                                         .build();
-                                    self.audio_sequence_buffer.push_back(SequenceBufferEntry::new(Vec::from(raw), sample_ctx));
-                                }
-                                /*let mut sample_ctx = SampleContextBuilder::new()
-                                    .set_decode_time(parse_timescale(tag.timestamp))
-                                    .set_sample_size(raw.len() as u32)
-                                    .set_sample_duration(parse_aac_timescale(self.ctx.audio_sample_rate))
-                                    .set_composition_time_offset(0)
-                                    .build();
 
-                                let mut data = Encoder::encode_moof(&mut self.ctx, &mut self.audio_track, &mut sample_ctx).serialize();
-                                data.append(&mut Encoder::encode_mdat(Vec::from(raw)).serialize());
-                                self.send_raw_data(RemuxedData::Audio(data))?;*/
+                                    self.audio_sequence_buffer.push_back(VideoSequenceBufferEntry::new(Vec::from(raw), sample_ctx));
+                                }
                             }
                             AudioParseResult::Mp3(parsed) => {
-                                // todo: implement buffering for mp3
                                 let mut sample_ctx = SampleContextBuilder::new()
                                     .set_decode_time(parse_timescale(tag.timestamp))
                                     .set_sample_size(parsed.body.len() as u32)
@@ -228,17 +221,14 @@ impl Remuxer {
                         if let VideoParseResult::Avc1(parsed) = parsed {
                             match parsed {
                                 Avc1ParseResult::AvcNalu(data) => {
-                                    if data.keyframe_type == KeyframeType::Keyframe {
+                                    /*if data.keyframe_type == KeyframeType::Keyframe {
                                         if self.video_sequence_buffer.is_empty() {
                                             // if this frame is a keyframe, and there's no existing keyframe,
                                             // then buffer it.
                                             println!("No keyframe found, buffering keyframe");
-                                            if self.first_video_dts.is_none() {
-                                                self.first_video_dts = Some(parse_timescale(tag.timestamp));
-                                            }
                                             self.frame_count += 1;
                                             let sample_ctx = SampleContextBuilder::new()
-                                                .set_decode_time(parse_timescale(tag.timestamp) - self.first_video_dts.unwrap())
+                                                .set_decode_time(parse_timescale(tag.timestamp))
                                                 .set_sample_size(data.payload.len() as u32)
                                                 .set_sample_duration(parse_avc_timescale(self.ctx.fps as f32))
                                                 .set_composition_time_offset(0)
@@ -247,7 +237,7 @@ impl Remuxer {
                                                 .set_is_keyframe(data.keyframe_type == KeyframeType::Keyframe)
                                                 .set_is_non_sync(data.keyframe_type == KeyframeType::Interframe)
                                                 .build();
-                                            self.video_sequence_buffer.push_back(SequenceBufferEntry::new(Vec::from(data.payload), sample_ctx));
+                                            self.video_sequence_buffer.push_back(VideoSequenceBufferEntry::new(Vec::from(data.payload), sample_ctx));
                                         } else {
                                             // if this frame is a keyframe, and there's existing keyframe,
                                             // then drain the buffer, and push this frame to the buffer.
@@ -275,7 +265,7 @@ impl Remuxer {
                                                 .set_is_keyframe(data.keyframe_type == KeyframeType::Keyframe)
                                                 .set_is_non_sync(data.keyframe_type == KeyframeType::Interframe)
                                                 .build();
-                                            self.video_sequence_buffer.push_back(SequenceBufferEntry::new(Vec::from(data.payload), sample_ctx));
+                                            self.video_sequence_buffer.push_back(VideoSequenceBufferEntry::new(Vec::from(data.payload), sample_ctx));
                                         }
                                     } else {
                                         if self.video_sequence_buffer.is_empty() {
@@ -304,39 +294,74 @@ impl Remuxer {
                                             let sample_ctx = SampleContextBuilder::new()
                                                 .set_decode_time(parse_timescale(tag.timestamp))
                                                 .set_sample_size(data.payload.len() as u32)
-                                                .set_sample_duration(
-                                                    parse_timescale(tag.timestamp) - self.video_sequence_buffer.iter().last().unwrap().sample_ctx.decode_time
-                                                )
+                                                .set_sample_duration(parse_avc_timescale(self.ctx.fps as f32))
                                                 .set_composition_time_offset(0)
                                                 .set_has_redundancy(false)
                                                 .set_is_leading(self.video_track.sequence_number == 1)
                                                 .set_is_keyframe(data.keyframe_type == KeyframeType::Keyframe)
                                                 .set_is_non_sync(data.keyframe_type == KeyframeType::Interframe)
                                                 .build();
-                                            self.video_sequence_buffer.push_back(SequenceBufferEntry::new(Vec::from(data.payload), sample_ctx))
+                                            self.video_sequence_buffer.push_back(VideoSequenceBufferEntry::new(Vec::from(data.payload), sample_ctx))
                                         }
-                                    }
-                                    /*let mut sample_ctx = SampleContextBuilder::new()
-                                        .set_decode_time(parse_timescale(tag.timestamp))
-                                        .set_sample_size(data.payload.len() as u32)
-                                        .set_sample_duration(parse_avc_timescale(self.ctx.fps as f32))
-                                        .set_composition_time_offset(0)
-                                        .set_has_redundancy(false)
-                                        .set_is_leading(self.video_track.sequence_number == 1)
-                                        .set_is_keyframe(data.keyframe_type == KeyframeType::Keyframe)
-                                        .set_is_non_sync(data.keyframe_type == KeyframeType::Interframe)
-                                        .build();
+                                    }*/
+                                    let cts = if let TagHeader::Video(ref header) = tag.tag_header {
+                                        header.composition_time_offset.unwrap_or(0)
+                                    } else {
+                                        0
+                                    };
 
-                                    let mut send_data = Encoder::encode_moof(&mut self.ctx, &mut self.video_track, &mut sample_ctx).serialize();
-                                    send_data.append(&mut Encoder::encode_mdat(Vec::from(data.payload)).serialize());
-                                    self.send_raw_data(RemuxedData::Video(send_data))?;*/
+                                    if !self.video_sequence_buffer.is_empty() {
+                                        let mut prev_sample = self.video_sequence_buffer.iter_mut().last().unwrap();
+
+                                        let prev_dts = prev_sample.sample_ctx.decode_time;
+                                        let current_dts = parse_timescale(tag.timestamp);
+
+                                        let prev_duration_correction = current_dts - prev_dts;
+                                        prev_sample.sample_ctx.sample_duration = prev_duration_correction;
+
+                                        let dts_correction = parse_timescale(tag.timestamp) - self.video_dts_adjust.unwrap_or(0);
+
+                                        let sample_ctx = SampleContextBuilder::new()
+                                            .set_decode_time(dts_correction)
+                                            .set_sample_size(data.payload.len() as u32)
+                                            .set_sample_duration(parse_avc_timescale(self.ctx.fps as f32))
+                                            .set_composition_time_offset(parse_timescale_signed(cts))
+                                            .set_has_redundancy(false)
+                                            .set_is_leading(self.video_track.sequence_number == 1)
+                                            .set_is_keyframe(data.keyframe_type == KeyframeType::Keyframe)
+                                            .set_is_non_sync(data.keyframe_type == KeyframeType::Interframe)
+                                            .build();
+
+                                        self.video_sequence_buffer.push_back(VideoSequenceBufferEntry::new(Vec::from(data.payload), sample_ctx));
+
+                                        let front = self.video_sequence_buffer.pop_front();
+                                        if let Some(mut front) = front {
+                                            let mut send_data = Encoder::encode_moof(&mut self.ctx, &mut self.video_track, &mut front.sample_ctx).serialize();
+                                            send_data.append(&mut Encoder::encode_mdat(Vec::from(front.payload)).serialize());
+                                            self.send_raw_data(RemuxedData::Video(send_data))?;
+                                        }
+                                    } else {
+                                        self.video_dts_adjust = Some(parse_timescale(tag.timestamp));
+
+                                        let sample_ctx = SampleContextBuilder::new()
+                                            .set_decode_time(parse_timescale(tag.timestamp))
+                                            .set_sample_size(data.payload.len() as u32)
+                                            .set_sample_duration(parse_avc_timescale(self.ctx.fps as f32))
+                                            .set_composition_time_offset(0)
+                                            .set_has_redundancy(false)
+                                            .set_is_leading(self.video_track.sequence_number == 1)
+                                            .set_is_keyframe(data.keyframe_type == KeyframeType::Keyframe)
+                                            .set_is_non_sync(data.keyframe_type == KeyframeType::Interframe)
+                                            .build();
+
+                                        self.video_sequence_buffer.push_back(VideoSequenceBufferEntry::new(Vec::from(data.payload), sample_ctx));
+                                    }
                                 }
                                 Avc1ParseResult::AvcSequenceHeader(_) => {
                                     panic!("[Remuxer] Avc sequence header not set!")
                                 }
                                 Avc1ParseResult::AvcEndOfSequence => {
                                     // todo: handle all the remaining frames in the buffer.
-                                    // todo: this may lead to the last frames lagging. fix this.
                                     while !self.video_sequence_buffer.is_empty() {
                                         let entry = self.video_sequence_buffer.pop_front().unwrap();
                                         let mut sample_ctx = entry.sample_ctx;
@@ -344,14 +369,6 @@ impl Remuxer {
                                         send_data.append(&mut Encoder::encode_mdat(entry.payload).serialize());
                                         self.send_raw_data(RemuxedData::Video(send_data))?;
                                         self.frame_count += 1;
-                                    }
-
-                                    while !self.audio_sequence_buffer.is_empty() {
-                                        let entry = self.audio_sequence_buffer.pop_front().unwrap();
-                                        let mut sample_ctx = entry.sample_ctx;
-                                        let mut send_data = Encoder::encode_moof(&mut self.ctx, &mut self.audio_track, &mut sample_ctx).serialize();
-                                        send_data.append(&mut Encoder::encode_mdat(entry.payload).serialize());
-                                        self.send_raw_data(RemuxedData::Audio(send_data))?;
                                     }
                                     println!("[Remuxer] End of sequence.");
                                     println!("[Remuxer] Frame count: {}", self.frame_count)

@@ -20,11 +20,20 @@ pub fn parse_timescale(timestamp_ms: u32) -> u32 {
 }
 
 #[inline]
-fn parse_timescale_accurate(timestamp_ms: f32) -> u32 {
+pub fn parse_timescale_accurate(timestamp_ms: f32) -> u32 {
     if TIME_SCALE == 1000 {
         timestamp_ms as u32
     } else {
         (timestamp_ms * TIME_SCALE as f32 / 1000.0) as u32
+    }
+}
+
+#[inline]
+pub fn parse_timescale_signed(timestamp_ms: i32) -> i32 {
+    if TIME_SCALE == 1000 {
+        timestamp_ms
+    } else {
+        (timestamp_ms as f32 * TIME_SCALE as f32 / 1000.0) as i32
     }
 }
 

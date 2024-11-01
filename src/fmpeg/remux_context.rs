@@ -33,7 +33,7 @@ pub struct SampleContext {
     pub has_redundancy: bool,
 
     pub decode_time: u32,
-    pub composition_time_offset: u32, // most of the time this can be set to 0.
+    pub composition_time_offset: i32, // most of the time this can be set to 0.
     // dts   +  cts    =   pts
     // decode   offset     presentation
     pub sample_duration: u32,
@@ -47,7 +47,7 @@ pub struct SampleContextBuilder {
     pub has_redundancy: bool,
 
     pub decode_time: u32,
-    pub composition_time_offset: u32,
+    pub composition_time_offset: i32,
     pub sample_duration: u32,
     pub sample_size: u32,
 }
@@ -98,7 +98,7 @@ impl SampleContextBuilder {
     }
 
     #[inline]
-    pub fn set_composition_time_offset(&mut self, composition_time_offset: u32) -> &mut Self {
+    pub fn set_composition_time_offset(&mut self, composition_time_offset: i32) -> &mut Self {
         self.composition_time_offset = composition_time_offset;
         self
     }
@@ -131,12 +131,12 @@ impl SampleContextBuilder {
     }
 }
 
-pub struct SequenceBufferEntry {
+pub struct VideoSequenceBufferEntry {
     pub payload: Vec<u8>,
     pub sample_ctx: SampleContext,
 }
 
-impl SequenceBufferEntry {
+impl VideoSequenceBufferEntry {
     pub fn new(payload: Vec<u8>, sample_ctx: SampleContext) -> Self {
         Self {
             payload,
@@ -145,7 +145,7 @@ impl SequenceBufferEntry {
     }
 }
 
-pub const TIME_SCALE: u32 = 24000;
+pub const TIME_SCALE: u32 = 30000;
 // Magic number!!
 // Using 1000 is not accurate enough, and will lead to audio/video sync issue (e.g. flaws, time mismatch, etc.)
 // 24000 is big enough and will not cause overflow.

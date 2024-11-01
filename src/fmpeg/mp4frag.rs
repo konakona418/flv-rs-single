@@ -462,7 +462,7 @@ pub struct TrackRunBox {
     pub sample_size: u32,
     pub sample_flags: u16,
     pub reserved: u16,
-    pub sample_composition_time_offset: u32,
+    pub sample_composition_time_offset: i32,
 }
 
 impl TrackRunBox {
@@ -517,7 +517,7 @@ pub struct TrackRunBoxBuilder {
     sample_duration: u32,
     sample_size: u32,
     sample_flags: u16,
-    sample_composition_time_offset: u32,
+    sample_composition_time_offset: i32,
     data_offset: u32,
 
     flag: u32,
@@ -555,7 +555,7 @@ impl TrackRunBoxBuilder {
         self
     }
 
-    pub fn with_sample_composition_time_offset(mut self, offset: u32) -> TrackRunBoxBuilder {
+    pub fn with_sample_composition_time_offset(mut self, offset: i32) -> TrackRunBoxBuilder {
         self.sample_composition_time_offset = offset;
         self.flag |= 0x000800;
         self
@@ -703,11 +703,11 @@ pub struct MergedTrackRunBoxEntry {
     pub sample_size: u32,
     pub sample_flags: u16,
     pub reserved: u16,
-    pub sample_composition_time_offset: u32,
+    pub sample_composition_time_offset: i32,
 }
 
 impl MergedTrackRunBoxEntry {
-    pub fn new(sample_duration: u32, sample_size: u32, sample_flags: u16, sample_composition_time_offset: u32) -> MergedTrackRunBoxEntry {
+    pub fn new(sample_duration: u32, sample_size: u32, sample_flags: u16, sample_composition_time_offset: i32) -> MergedTrackRunBoxEntry {
         MergedTrackRunBoxEntry {
             sample_duration,
             sample_size,
@@ -739,7 +739,7 @@ pub struct MergedTrackRunBoxEntryBuilder {
     sample_duration: u32,
     sample_size: u32,
     sample_flags: u16,
-    sample_composition_time_offset: u32,
+    sample_composition_time_offset: i32,
 }
 
 impl MergedTrackRunBoxEntryBuilder {
@@ -767,7 +767,7 @@ impl MergedTrackRunBoxEntryBuilder {
         self
     }
 
-    pub fn with_sample_composition_time_offset(mut self, sample_composition_time_offset: u32) -> MergedTrackRunBoxEntryBuilder {
+    pub fn with_sample_composition_time_offset(mut self, sample_composition_time_offset: i32) -> MergedTrackRunBoxEntryBuilder {
         self.sample_composition_time_offset = sample_composition_time_offset;
         self
     }

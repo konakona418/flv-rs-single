@@ -73,12 +73,12 @@ pub struct VideoTagHeader {
     pub avc_packet_type: Option<u8>,
     // SI24
     // if codec_id == 7
-    pub composition_time: Option<i32>,
+    pub composition_time_offset: Option<i32>,
 }
 
 impl VideoTagHeader {
     pub fn new(frame_type: u8, codec_id: u8, avc_packet_type: Option<u8>, composition_time: Option<i32>) -> Self {
-        Self { frame_type, codec_id, avc_packet_type, composition_time }
+        Self { frame_type, codec_id, avc_packet_type, composition_time_offset: composition_time }
     }
 
     pub fn parse(decoder: &mut Decoder, header_size: &mut usize) -> Result<Self, Box<dyn std::error::Error>> {
@@ -96,7 +96,7 @@ impl VideoTagHeader {
             *header_size += 3;
             composition_time = Some(decoder.drain_i24());
         }
-        Ok(Self { frame_type, codec_id, avc_packet_type, composition_time })
+        Ok(Self { frame_type, codec_id, avc_packet_type, composition_time_offset: composition_time })
     }
 }
 
