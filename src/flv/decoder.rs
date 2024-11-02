@@ -363,11 +363,14 @@ impl Decoder {
             }
         }
 
+        // don't throw error here! it will interrupt the decoding process and lead to unexpected behavior.
         'decoding: loop {
             if self.data.is_empty() || (!self.decoding) {
+                //return Err("No more data.".into())
                 break 'decoding;
             }
-            if self.decode_body_once().is_err() {
+            if let Err(e) = self.decode_body_once() {
+                //return Err(e);
                 break 'decoding;
             }
         }

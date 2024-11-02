@@ -148,7 +148,7 @@ impl VideoSequenceBufferEntry {
 pub const TIME_SCALE: u32 = 30000;
 // Magic number!!
 // Using 1000 is not accurate enough, and will lead to audio/video sync issue (e.g. flaws, time mismatch, etc.)
-// 24000 is big enough and will not cause overflow.
+// 30000 is big enough and will not cause overflow.
 
 pub struct RemuxContext {
     pub fps: f64,
