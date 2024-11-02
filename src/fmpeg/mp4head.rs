@@ -848,7 +848,7 @@ impl TrackHeaderBoxV0 {
             size: 0,
             box_type: ['t', 'k', 'h', 'd'],
             version: 0,
-            flags: U24::from(7), // todo: what does flags stand for?
+            flags: U24::from(7), // what does flags stand for?
 
             creation_time,
             modification_time,
@@ -1004,7 +1004,7 @@ impl TrackHeaderBoxV1 {
             size: 0,
             box_type: ['m', 'd', 'h', 'd'],
             version: 1,
-            flags: U24::from(7), // todo: what does flags stand for?
+            flags: U24::from(7), // what does flags stand for?
 
             creation_time,
             modification_time,

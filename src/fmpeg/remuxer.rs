@@ -361,7 +361,7 @@ impl Remuxer {
                                     panic!("[Remuxer] Avc sequence header not set!")
                                 }
                                 Avc1ParseResult::AvcEndOfSequence => {
-                                    // todo: handle all the remaining frames in the buffer.
+                                    // handle all the remaining frames in the buffer.
                                     while !self.video_sequence_buffer.is_empty() {
                                         let entry = self.video_sequence_buffer.pop_front().unwrap();
                                         let mut sample_ctx = entry.sample_ctx;

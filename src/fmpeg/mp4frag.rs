@@ -174,7 +174,6 @@ impl ISerializable for TrackFragmentBox {
 
         // self.track_run_box.data_offset = self.size();
 
-        // todo: something wrong with this.
         result.extend_from_slice(&self.track_run_box.serialize());
 
         result.extend_from_slice(&self.sample_table_box.serialize());
@@ -310,7 +309,7 @@ impl ISerializable for SampleDependencyTableBox {
         result.extend_from_slice(&self.flags.serialize());
 
         result.push(self.sample_dependency_flags);
-        // todo: this is a simplified version which supports only one sample per sample entry.
+        // NOTE: this is a simplified version which supports only one sample per sample entry.
         assert_eq!(result.len(), 13);
         result
     }
@@ -351,6 +350,7 @@ impl ISerializable for SampleDependencyTableBoxBuilder {
         let mut sd: SampleDependencyTableBox = match self {
             // this is a hack for now.
             // todo: this may trigger some issues in the future.
+            // yes it triggered some issues. fix it.
             SampleDependencyTableBoxBuilder::VideoKeyFrame => SampleDependencyTableBox::new(0x18),
             SampleDependencyTableBoxBuilder::VideoInterFrame => SampleDependencyTableBox::new(0x24),
             SampleDependencyTableBoxBuilder::Audio => SampleDependencyTableBox::new(0x10),
@@ -359,7 +359,7 @@ impl ISerializable for SampleDependencyTableBoxBuilder {
     }
 
     fn size(&self) -> u32 {
-        // todo: this is a simplified version which supports only one sample per sample entry.
+        // NOTE: this is a simplified version which supports only one sample per sample entry.
         13
     }
 }

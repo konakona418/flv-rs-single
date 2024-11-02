@@ -109,7 +109,6 @@ impl Demuxer {
                 PackedContent::ToDemuxer(content) => {
                     match content {
                         PackedContentToDemuxer::PushTag(tag) => {
-                            // todo: implement tag processing.
                             self.process_incoming_tag(tag);
                         }
                         PackedContentToDemuxer::PushFlvHeader(flv_header) => {

@@ -391,7 +391,6 @@ impl RemuxContext {
         }
 
         // self.audio_metadata_configured = true;
-        // todo: test this.
     }
 
     pub fn configure_video_metadata(&mut self, video_metadata: &VideoParseResult) -> Option<VideoCodecConfig> {
@@ -412,7 +411,6 @@ impl RemuxContext {
                         Some(codec_conf)
                     }
                     Avc1ParseResult::AvcEndOfSequence => {
-                        // todo: handle this.
                         None
                     }
                     _ => {

@@ -108,7 +108,7 @@ impl Encoder {
                                     .set_width(ctx.width as u16)
                                     .set_height(ctx.height as u16)
                                     .avcc_box(ctx.video_avcc_info.clone())
-                                    // todo: here is the place to add video configuration
+                                    // here is the place to add video configuration
                                     .build()
                             )
                         } else {
@@ -152,10 +152,9 @@ impl Encoder {
         minf
     }
 
-    // todo: implement moof & mdat encoding.
-
     pub fn encode_moof(ctx: &mut RemuxContext, track_ctx: &mut TrackContext, encoding_ctx: &mut SampleContext) -> MovieFragmentBox<TrackFragmentBox> {
-        // todo: one sequence number only?
+        // one sequence number only?
+        // yes
         let mut moof = MovieFragmentBox::new(
             ctx.sequence_number,
             Self::encode_traf(ctx, track_ctx, encoding_ctx),

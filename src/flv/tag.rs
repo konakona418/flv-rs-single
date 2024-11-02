@@ -60,7 +60,7 @@ pub enum NormalTagBody {
     Audio(VecDeque<u8>),
     Video(VecDeque<u8>),
     Script(ScriptTagBody),
-    Placeholder, // todo: temporary
+    Placeholder,
 }
 
 impl Debug for NormalTagBody {
@@ -97,7 +97,7 @@ pub enum EncryptedTagBody {
     Audio(Vec<u8>),
     Video(Vec<u8>),
     Script(ScriptTagBody),
-    Placeholder, // todo: temporary
+    Placeholder,
 }
 
 impl TagType {

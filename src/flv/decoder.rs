@@ -247,6 +247,21 @@ impl Decoder {
         (ts & 0x00FFFFFFu32) | ((ts_ext as u32) << 24)
     }
 
+    pub fn peek_tag_size(&mut self) -> Result<u32, Box<dyn std::error::Error>> {
+        if self.data.len() < 4 {
+            return Err("Insufficient data to peek buffer size.".into())
+        }
+        let mut data_size = self.data.iter_mut()
+            .skip(1)
+            .take(3)
+            .map(|x| *x)
+            .collect::<Vec<u8>>();
+        let mut extended = vec![0];
+        extended.append(&mut data_size);
+        let data_size = u32::from_be_bytes(<[u8;4]>::try_from(extended.as_slice())?);
+        Ok(data_size)
+    }
+
     pub fn decode_tag(&mut self) -> Result<Tag, Box<dyn std::error::Error>> {
         let bit = BitIO::new(self.drain_u8());
         let filter = bit.read_bit(2);
@@ -288,8 +303,6 @@ impl Decoder {
                 }
             })
         } else {
-            // todo: handle encryption tag header
-            // todo: handle filter parameters
             tag_header = TagHeader::Placeholder;
             encryption_header = Some(EncryptionTagHeader::parse(self, &mut header_size)?);
             filter_params = Some(FilterParameters::parse(self, &mut header_size)?);
@@ -364,6 +377,16 @@ impl Decoder {
     pub fn decode_body_once(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         const HEADER_SIZE: u32 = 11;
 
+        // todo: [IMPORTANT] this is not safe. fix it!
+        // for instance, when the video is streamed, the data in the buffer may be insufficient to read.
+        // however the program has already acquired the tag size and will make an attempt to read.
+        // this may cause the program to panic!!
+
+        // possible solution: don't drain buffer to get the size first. use slice instead.
+        // check whether the buffer has sufficient data to read.
+        // if so, drain the 'size', and read buffer.
+        // otherwise, PAUSE IT!
+
         let previous_tag_size = self.drain_u32();
 
         if self.data.is_empty() {
@@ -372,6 +395,30 @@ impl Decoder {
 
         //dbg!(previous_tag_size);
         if previous_tag_size == self.previous_tag_size {
+
+            // check whether the next tag size is sufficient to read.
+            if let Ok(next_tag_size) = self.peek_tag_size() {
+                if next_tag_size + HEADER_SIZE > self.data.len() as u32 {
+                    // insufficient data.
+                    // put back the previous tag size.
+                    for i in previous_tag_size.to_le_bytes() {
+                        self.data.push_front(i)
+                    }
+                    return Err(
+                        format!("Insufficient data for decoding. Expected minimum buffer size {}, real size {}.",
+                                next_tag_size + HEADER_SIZE,
+                                self.data.len()
+                        ).into()
+                    );
+                }
+            } else {
+                for i in previous_tag_size.to_le_bytes() {
+                    self.data.push_front(i)
+                }
+                return Err("Insufficient data for peeking size of next tag.".into());
+            }
+
+
             let tag = self.decode_tag()?;
             //dbg!(tag.data_size + HEADER_SIZE);
             self.previous_tag_size = tag.data_size + HEADER_SIZE;
@@ -413,6 +460,7 @@ impl Decoder {
     }
 
     pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        // todo: [IMPORTANT] add some mechanism to reset the demuxer-remuxer instance.
         loop {
             // this is to ensure the header is read.
             if let Ok(flv_header) = self.decode_header() {
@@ -420,6 +468,15 @@ impl Decoder {
                 break;
             }
         }
+        self.decode_body()?;
+        self.demuxer.run()?;
+        Ok(())
+    }
+
+    /// Continue decoding.
+    /// To restore the decoder from idle state, call `continue_decoding`.
+    /// Do not call this before calling `start`!!
+    pub fn continue_decoding(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         self.decode_body()?;
         self.demuxer.run()?;
         Ok(())

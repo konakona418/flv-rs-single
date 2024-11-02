@@ -176,7 +176,7 @@ impl ScriptDataEcmaArray {
         }
 
         Self::parse_no_marker(data)
-        // todo: is the last elem of the ecma array the 'end marker'?
+        // is the last elem of the ecma array the 'end marker'?
         // it seems that the answer is no. but i'm not sure.
     }
 

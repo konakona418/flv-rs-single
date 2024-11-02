@@ -39,7 +39,6 @@ pub fn parse_timescale_signed(timestamp_ms: i32) -> i32 {
 
 #[inline]
 pub fn parse_mp3_timescale(sample_rate: u32, mp3version: Mp3Version) -> u32 {
-    // todo: test this.
     match mp3version {
         Mp3Version::Mp25 => {
             parse_timescale_accurate(576000.0 / sample_rate as f32)
@@ -58,7 +57,6 @@ pub fn parse_mp3_timescale(sample_rate: u32, mp3version: Mp3Version) -> u32 {
 
 #[inline]
 pub fn parse_aac_timescale(sample_rate: u32) -> u32 {
-    // todo: test this.
     // this may be incorrect.
     parse_timescale_accurate((1024.0 * 1000.0) / sample_rate as f32)
 }
@@ -377,6 +375,13 @@ impl Parser {
     }
 
     fn parse_avc_nalu(header: &VideoTagHeader, mut payload: VecDeque<u8>) -> Result<AvcNalu, Box<dyn std::error::Error>> {
+        // todo: [IMPORTANT] this is a simplified solution and requires further optimization.
+        // although codec of most modern browsers can identify an fix the mismatch between the header and the actual data,
+        // and simply use flv header to determine the keyframe type will not cause obvious problems,
+        // however it's still unsafe and may lead to unexpected errors.
+        // use payload of the AVC NAL unit to determine whether the frame is a keyframe or not.
+        // use flv header as a reference only.
+
         let size = payload.len() as u32;
         let nalu_type = KeyframeType::from(header.frame_type);
 

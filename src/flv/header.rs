@@ -102,7 +102,7 @@ impl VideoTagHeader {
 
 #[derive(Debug, Clone)]
 pub struct EncryptionTagHeader {
-    // todo: encryption
+    // encryption
 }
 
 impl EncryptionTagHeader {
@@ -119,12 +119,12 @@ pub enum FilterParameters {
 
 #[derive(Debug, Clone)]
 pub struct EncryptionFilterParameters {
-    // todo: encryption
+    // encryption
 }
 
 #[derive(Debug, Clone)]
 pub struct SelectiveEncryptionFilterParameters {
-    // todo: selective encryption
+    // selective encryption
 }
 
 impl SelectiveEncryptionFilterParameters {
