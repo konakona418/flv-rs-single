@@ -92,6 +92,7 @@ impl Core {
 
     /// Returns the codec configuration. This method will block until the codec configuration is ready.
     pub fn get_codec_conf(&mut self) -> Result<(String, String), Box<dyn std::error::Error>> {
+        // todo: [OPTIMIZATION REQUIRED] this is a blocking call. use try_get_codec_conf instead.
         self.process_incoming()?;
 
         loop {
@@ -100,6 +101,30 @@ impl Core {
                 None => {}
             }
         }
+    }
+
+    /// Returns the codec configuration with a timeout.
+    pub fn get_codec_conf_with_timeout(&mut self, timeout: std::time::Duration) -> Result<(String, String), Box<dyn std::error::Error>> {
+        let start = std::time::Instant::now();
+        while start.elapsed() < timeout {
+            match self.try_get_codec_conf() {
+                Some(conf) => return Ok(conf),
+                None => {}
+            }
+        };
+        Err("Unable to get codec configuration. Time limit exceeded. ".into())
+    }
+
+    /// Returns the codec configuration with a default value if the codec configuration is not ready.
+    /// Note that the return value may not be guaranteed to be valid.
+    /// If the validity cannot be guaranteed, the result will be wrapped in an Err.
+    /// If the validity can be guaranteed, the result will be wrapped in an Ok.
+    pub fn get_codec_conf_or_default(&mut self) -> Result<(String, String), (String, String)> {
+        match self.try_get_codec_conf() {
+            Some(conf) => return Ok(conf),
+            None => {}
+        };
+        Err(("mp4a.40.2".into(), "avc1.64001E".into()))
     }
 }
 

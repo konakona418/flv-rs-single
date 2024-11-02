@@ -1,7 +1,7 @@
 use std::any::Any;
 use crate::core::Core;
 use crate::exchange::PackedContentToCore::Data;
-use crate::exchange::{Destination, MseDecoderConfig, Packed, PackedContent, PackedContentToCore, PackedContentToRemuxer, RemuxedData};
+use crate::exchange::{Destination, EndOfSequenceType, MseDecoderConfig, Packed, PackedContent, PackedContentToCore, PackedContentToRemuxer, RemuxedData};
 use crate::flv::header::{FlvHeader, TagHeader};
 use crate::flv::meta::RawMetaData;
 use crate::flv::tag::{Tag, TagType};
@@ -371,7 +371,14 @@ impl Remuxer {
                                         self.frame_count += 1;
                                     }
                                     println!("[Remuxer] End of sequence.");
-                                    println!("[Remuxer] Frame count: {}", self.frame_count)
+                                    println!("[Remuxer] Frame count: {}", self.frame_count);
+                                    // todo: note that the end of sequence type is set to both, because the audio track is also ended.
+                                    self.send(Packed {
+                                        packed_routing: Destination::Core,
+                                        packed_content: PackedContent::ToCore(
+                                            PackedContentToCore::Data(RemuxedData::EndOfSequence(EndOfSequenceType::Both))
+                                        )
+                                    })?;
                                 }
                             }
                         }

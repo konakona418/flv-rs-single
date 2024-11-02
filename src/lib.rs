@@ -208,6 +208,9 @@ mod tests {
                 RemuxedData::Audio(data) => {
                     data
                 },
+                RemuxedData::EndOfSequence(_) => {
+                    break;
+                },
             };
             let size = output_file.write(&data).unwrap();
             buf_written += size;

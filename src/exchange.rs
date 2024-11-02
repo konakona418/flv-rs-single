@@ -131,7 +131,14 @@ pub enum PackedContentToCore {
 pub enum RemuxedData {
     Header(Vec<u8>),
     Audio(Vec<u8>),
-    Video(Vec<u8>)
+    Video(Vec<u8>),
+    EndOfSequence(EndOfSequenceType)
+}
+
+pub enum EndOfSequenceType {
+    Audio,
+    Video,
+    Both
 }
 
 pub enum MseDecoderConfig {

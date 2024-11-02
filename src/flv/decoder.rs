@@ -677,4 +677,16 @@ impl Decoder {
     pub fn get_codec_conf(&mut self) -> Result<(String, String), Box<dyn std::error::Error>> {
         self.demuxer.remuxer.core.get_codec_conf()
     }
+
+    pub fn try_get_codec_conf(&mut self) -> Option<(String, String)> {
+        self.demuxer.remuxer.core.try_get_codec_conf()
+    }
+
+    pub fn get_codec_conf_or_default(&mut self) -> Result<(String, String), (String, String)> {
+        self.demuxer.remuxer.core.get_codec_conf_or_default()
+    }
+
+    pub fn get_codec_conf_with_timeout(&mut self, timeout: std::time::Duration) -> Result<(String, String), Box<dyn std::error::Error>> {
+        self.demuxer.remuxer.core.get_codec_conf_with_timeout(timeout)
+    }
 }
