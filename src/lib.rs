@@ -6,21 +6,17 @@ pub mod fmpeg;
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{HashMap, VecDeque};
-    use std::io::Write;
-    use std::thread;
-    use std::time::Duration;
+    use super::*;
+    use crate::core::IConsumable;
+    use crate::exchange::RemuxedData;
     use crate::flv::decoder::Decoder;
-    use crate::flv::demuxer::Demuxer;
     use crate::flv::tag::TagType;
     use crate::fmpeg::encoder::Encoder;
     use crate::fmpeg::mp4head::{ISerializable, U24};
     use crate::fmpeg::remux_context::{AudioCodecType, RemuxContext, VideoCodecType};
-    use crate::fmpeg::remuxer::Remuxer;
     use crate::io::bit::UIntParserEndian;
-    use crate::core::IConsumable;
-    use crate::exchange::RemuxedData;
-    use super::*;
+    use std::collections::{HashMap, VecDeque};
+    use std::io::Write;
 
     #[test]
     fn it_works() {
@@ -84,7 +80,6 @@ mod tests {
         assert_eq!(decoder.drain_u24(), 0x00ffffff);
         assert_eq!(decoder.drain_u32(), 4294967295);
         assert_eq!(decoder.drain_u64(), 18446744073709551615u64);*/
-
 
 
         let core = core::Core::new();
@@ -201,23 +196,22 @@ mod tests {
             let data: Vec<u8> = match packet {
                 RemuxedData::Header(data) => {
                     data
-                },
+                }
                 RemuxedData::Video(data) => {
                     data
-                },
+                }
                 RemuxedData::Audio(data) => {
                     data
-                },
+                }
                 RemuxedData::EndOfSequence(_) => {
                     break;
-                },
+                }
             };
             let size = output_file.write(&data).unwrap();
             buf_written += size;
         }
 
         println!("File successfully written: {} KiBs in total.", buf_written / 1024);
-
 
 
         println!("Done.");

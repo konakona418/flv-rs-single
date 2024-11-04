@@ -1,6 +1,6 @@
-use std::collections::VecDeque;
 use crate::flv::header::{EncryptionTagHeader, FilterParameters, TagHeader};
 use crate::flv::script::ScriptTagBody;
+use std::collections::VecDeque;
 use std::fmt::{Debug, Formatter};
 
 #[derive(Debug, Clone)]
@@ -131,7 +131,7 @@ impl Tag {
         tag_header: TagHeader,
         tag_body: TagBody,
         encryption_tag_header: Option<EncryptionTagHeader>,
-        filter_parameters: Option<FilterParameters>
+        filter_parameters: Option<FilterParameters>,
     ) -> Self {
         Self {
             filter,
@@ -144,7 +144,7 @@ impl Tag {
             tag_header,
             tag_body,
             encryption_tag_header,
-            filter_parameters
+            filter_parameters,
         }
     }
 }

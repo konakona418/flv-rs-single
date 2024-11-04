@@ -61,7 +61,6 @@ pub struct ScriptDataObject {
 }
 
 impl ScriptDataObject {
-
     pub fn parse(data: &mut Decoder) -> Result<ScriptDataObject, Box<dyn std::error::Error>> {
         let type_marker = data.drain_u8();
         if type_marker != 3 {

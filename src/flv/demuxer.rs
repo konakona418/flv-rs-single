@@ -2,9 +2,9 @@ use crate::exchange::{Destination, Packed, PackedContent, PackedContentToDemuxer
 use crate::flv::header::FlvHeader;
 use crate::flv::meta::RawMetaData;
 use crate::flv::tag::{NormalTagBody, Tag, TagBody, TagType};
+use crate::fmpeg::remuxer::Remuxer;
 use std::collections::VecDeque;
 use std::thread::JoinHandle;
-use crate::fmpeg::remuxer::Remuxer;
 
 pub struct Demuxer {
     pack_buffer: VecDeque<Packed>,

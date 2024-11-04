@@ -196,7 +196,7 @@ pub struct RemuxContext {
 
 pub enum VideoCodecType {
     Avc1,
-    None
+    None,
 }
 
 impl From<u8> for VideoCodecType {
@@ -366,7 +366,7 @@ impl RemuxContext {
                 self.audio_channels = match mp3_info.channel {
                     Channel::Mono => {
                         1
-                    },
+                    }
                     Channel::Dual => {
                         2
                     }
@@ -404,7 +404,7 @@ impl RemuxContext {
                         let codec_conf = VideoCodecConfig::new(
                             header[1],
                             header[2],
-                            header[3]
+                            header[3],
                         );
 
                         self.video_metadata_configured = true;

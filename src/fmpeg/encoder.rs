@@ -1,8 +1,8 @@
-use crate::fmpeg::mp4frag::{MergedSampleDependencyTableBox, MergedSampleDependencyTableBoxBuilder, MergedTrackFragmentBox, MergedTrackFragmentBoxBuilder, MergedTrackRunBox, MergedTrackRunBoxEntryBuilder, MovieDataBox, MovieFragmentBox, SampleDependencyTableBoxBuilder, SampleFlagBuilder, TrackFragmentBox, TrackFragmentBoxBuilder, TrackRunBoxBuilder};
+use crate::fmpeg::mp4frag::{MergedSampleDependencyTableBoxBuilder, MergedTrackFragmentBox, MergedTrackFragmentBoxBuilder, MergedTrackRunBox, MergedTrackRunBoxEntryBuilder, MovieDataBox, MovieFragmentBox, SampleDependencyTableBoxBuilder, SampleFlagBuilder, TrackFragmentBox, TrackFragmentBoxBuilder, TrackRunBoxBuilder};
 use crate::fmpeg::mp4head;
 use crate::fmpeg::mp4head::aac_utils::AacAudioSpecConfLike;
 use crate::fmpeg::mp4head::{AudioMediaHandlerBox, FileTypeBox, FixedPoint32, HandlerType, MediaBox, MovieBox, MovieHeaderBox, SampleBoxTableBox, VideoMediaHandlerBox, XMediaHandlerBox};
-use crate::fmpeg::remux_context::{AudioCodecType, SampleContext, RemuxContext, TrackContext, TrackType, VideoCodecType, TIME_SCALE};
+use crate::fmpeg::remux_context::{AudioCodecType, RemuxContext, SampleContext, TrackContext, TrackType, VideoCodecType, TIME_SCALE};
 
 pub struct Encoder;
 
@@ -55,7 +55,7 @@ impl Encoder {
                     .height(FixedPoint32::from(ctx.height))
                     .build()
             ),
-            media_box
+            media_box,
         );
         // dbg!(&trak);
         trak
@@ -175,7 +175,7 @@ impl Encoder {
                         } else {
                             SampleDependencyTableBoxBuilder::VideoInterFrame
                         }
-                    },
+                    }
                     TrackType::Audio => SampleDependencyTableBoxBuilder::Audio,
                 }
             )
@@ -255,7 +255,6 @@ impl Encoder {
                     .build()
             );
         }
-
 
 
         let sdtp = sdtp.build();

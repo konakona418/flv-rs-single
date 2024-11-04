@@ -15,14 +15,14 @@ pub trait IReader {
 
 pub struct LocalReader {
     data: Vec<u8>,
-    file: File
+    file: File,
 }
 
 impl LocalReader {
     pub fn new(filename: &str) -> LocalReader {
         LocalReader {
             data: Vec::new(),
-            file: File::open(filename).unwrap()
+            file: File::open(filename).unwrap(),
         }
     }
 

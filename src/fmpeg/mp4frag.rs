@@ -9,7 +9,10 @@ pub struct MovieFragmentBox<T: ISerializable + ITrackFragmentBoxLike> {
     pub track_fragment_box: T,
 }
 
-impl<T> MovieFragmentBox<T> where T: ISerializable + ITrackFragmentBoxLike {
+impl<T> MovieFragmentBox<T>
+where
+    T: ISerializable + ITrackFragmentBoxLike,
+{
     pub fn new(sequence_number: u32, track_fragment_box: T) -> MovieFragmentBox<T> {
         MovieFragmentBox {
             size: 0,
@@ -20,13 +23,16 @@ impl<T> MovieFragmentBox<T> where T: ISerializable + ITrackFragmentBoxLike {
     }
 
     pub fn deferred_set_trun_size(&mut self) {
-        let size= self.size();
+        let size = self.size();
         assert_ne!(size, 0);
         self.track_fragment_box.deferred_set_data_offset(size + 8); // Magic!!
     }
 }
 
-impl<T> ISerializable for MovieFragmentBox<T> where T: ISerializable + ITrackFragmentBoxLike {
+impl<T> ISerializable for MovieFragmentBox<T>
+where
+    T: ISerializable + ITrackFragmentBoxLike,
+{
     fn serialize(&mut self) -> Vec<u8> {
         self.size = self.size();
 
@@ -60,7 +66,7 @@ impl MovieFragmentHeaderBox {
             box_type: ['m', 'f', 'h', 'd'],
             version: 0,
             flags: U24::from(0),
-            sequence_number
+            sequence_number,
         }
     }
 }
@@ -156,7 +162,7 @@ impl TrackFragmentBoxBuilder {
             track_fragment_header_box: self.track_fragment_header_box,
             track_fragment_decode_time_box: self.track_fragment_decode_time_box,
             sample_table_box: self.sample_table_box,
-            track_run_box: self.track_run_box
+            track_run_box: self.track_run_box,
         }
     }
 }
@@ -249,7 +255,7 @@ impl TrackFragmentDecodeTimeBox {
             box_type: ['t', 'f', 'd', 't'],
             version: 0,
             flags: U24::from(0),
-            base_media_decode_time
+            base_media_decode_time,
         }
     }
 }
@@ -292,7 +298,7 @@ impl SampleDependencyTableBox {
             box_type: ['s', 'd', 't', 'p'],
             version: 0,
             flags: U24::from(0),
-            sample_dependency_flags
+            sample_dependency_flags,
         }
     }
 }
@@ -532,7 +538,7 @@ impl TrackRunBoxBuilder {
             sample_composition_time_offset: 0,
             data_offset: 0,
 
-            flag: 0x000F01
+            flag: 0x000F01,
             // todo: [TEMPORARY] note that this is just a temporary hack and may cause issues in the future.
         }
     }
@@ -629,7 +635,7 @@ pub struct MergedSampleDependencyTableBox {
     pub version: u8,
     pub flags: U24,
 
-    pub entries: Vec<SampleDependencyTableBoxBuilder>
+    pub entries: Vec<SampleDependencyTableBoxBuilder>,
 }
 
 impl MergedSampleDependencyTableBox {
@@ -639,7 +645,7 @@ impl MergedSampleDependencyTableBox {
             box_type: ['s', 'd', 't', 'p'],
             version: 0,
             flags: U24::from(0),
-            entries: Vec::new()
+            entries: Vec::new(),
         }
     }
 
@@ -672,7 +678,7 @@ impl ISerializable for MergedSampleDependencyTableBox {
 }
 
 pub struct MergedSampleDependencyTableBoxBuilder {
-    pub entries: Vec<SampleDependencyTableBoxBuilder>
+    pub entries: Vec<SampleDependencyTableBoxBuilder>,
 }
 
 impl MergedSampleDependencyTableBoxBuilder {
@@ -693,7 +699,7 @@ impl MergedSampleDependencyTableBoxBuilder {
             box_type: ['s', 'd', 't', 'p'],
             version: 0,
             flags: U24::from(0),
-            entries: self.entries
+            entries: self.entries,
         }
     }
 }
@@ -872,10 +878,10 @@ impl ISerializable for MergedTrackFragmentBox {
 
     fn size(&self) -> u32 {
         8 +
-        self.track_fragment_header_box.size() +
-        self.track_fragment_decode_time_box.size() +
-        self.merged_sample_table_box.size() +
-        self.merged_track_run_box.size()
+            self.track_fragment_header_box.size() +
+            self.track_fragment_decode_time_box.size() +
+            self.merged_sample_table_box.size() +
+            self.merged_track_run_box.size()
     }
 }
 

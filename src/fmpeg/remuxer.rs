@@ -1,4 +1,3 @@
-use std::any::Any;
 use crate::core::Core;
 use crate::exchange::PackedContentToCore::Data;
 use crate::exchange::{Destination, EndOfSequenceType, MseDecoderConfig, Packed, PackedContent, PackedContentToCore, PackedContentToRemuxer, RemuxedData};
@@ -35,7 +34,7 @@ pub struct Remuxer {
     audio_track: TrackContext,
     video_track: TrackContext,
 
-    _temp: Option<Vec<u8>>
+    _temp: Option<Vec<u8>>,
 }
 
 impl PartialEq for KeyframeType {
@@ -68,11 +67,10 @@ impl Remuxer {
             flv_header: None,
             ctx: RemuxContext::new(),
 
-
             audio_track: TrackContext::new(DEFAULT_AUDIO_TRACK_ID, TrackType::Audio),
             video_track: TrackContext::new(DEFAULT_VIDEO_TRACK_ID, TrackType::Video),
 
-            _temp: None
+            _temp: None,
         }
     }
 
@@ -182,7 +180,7 @@ impl Remuxer {
                             }
                         }
                     } else {
-                        let audio_codec_conf =  self.ctx.configure_audio_metadata(&parsed);
+                        let audio_codec_conf = self.ctx.configure_audio_metadata(&parsed);
 
                         if let AudioParseResult::Mp3(parsed) = parsed {
                             let mut sample_ctx = SampleContextBuilder::new()
@@ -198,13 +196,13 @@ impl Remuxer {
                         }
 
                         if let Some(conf) = audio_codec_conf {
-                            self.send( Packed {
+                            self.send(Packed {
                                 packed_routing: Destination::Core,
                                 packed_content: PackedContent::ToCore(
                                     PackedContentToCore::DecoderConfig(
                                         MseDecoderConfig::AudioCodec(conf)
                                     )
-                                )
+                                ),
                             })?;
                         }
                     }
@@ -377,7 +375,7 @@ impl Remuxer {
                                         packed_routing: Destination::Core,
                                         packed_content: PackedContent::ToCore(
                                             PackedContentToCore::Data(RemuxedData::EndOfSequence(EndOfSequenceType::Both))
-                                        )
+                                        ),
                                     })?;
                                 }
                             }
@@ -392,7 +390,7 @@ impl Remuxer {
                                         PackedContentToCore::DecoderConfig(
                                             MseDecoderConfig::VideoCodec(conf)
                                         )
-                                    )
+                                    ),
                                 }
                             )?;
                         }
@@ -444,19 +442,19 @@ impl Remuxer {
                         println!("[Remuxer] Closing remuxer thread.");
                         return Ok(());
                     }
-                    PackedContentToRemuxer::Now => { }
+                    PackedContentToRemuxer::Now => {}
                 }
             }
         }
 
         if !self.remuxing {
-            return Ok(())
+            return Ok(());
         }
 
         if self.ctx.is_metadata_complete() {
             if self.remux().is_err() {
                 println!("[Remuxer] Remux error.");
-                return Ok(())
+                return Ok(());
             }
         } else {
             println!("[Remuxer] Not configured yet.");

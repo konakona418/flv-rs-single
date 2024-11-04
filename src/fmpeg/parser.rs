@@ -1,12 +1,11 @@
-use std::collections::VecDeque;
 use crate::flv::header::{AudioTagHeader, TagHeader, VideoTagHeader};
 use crate::flv::tag::{NormalTagBody, Tag, TagBody};
 use crate::fmpeg::remux_context::TIME_SCALE;
 use crate::io;
+use std::collections::VecDeque;
 
 #[inline]
 pub fn parse_timescale(timestamp_ms: u32) -> u32 {
-
     /*if TIME_SCALE == 1000 {
         timestamp_ms
     } else {
@@ -69,7 +68,7 @@ pub fn parse_avc_timescale(fps: f32) -> u32 {
 pub enum AudioParseResult {
     AacRaw(VecDeque<u8>),
     AacSequenceHeader(AacSequenceHeader),
-    Mp3(Mp3ParseResult)
+    Mp3(Mp3ParseResult),
 }
 
 pub enum VideoParseResult {
@@ -79,7 +78,7 @@ pub enum VideoParseResult {
 pub enum Avc1ParseResult {
     AvcNalu(AvcNalu),
     AvcSequenceHeader(VecDeque<u8>),
-    AvcEndOfSequence
+    AvcEndOfSequence,
 }
 
 pub struct AvcNalu {
@@ -112,7 +111,7 @@ pub enum Mp3Version {
     Mp25,
     Mp20,
     Mp10,
-    Reserved
+    Reserved,
 }
 
 impl From<u8> for Mp3Version {
@@ -131,7 +130,7 @@ pub enum Mp3Layer {
     Reserved,
     L1,
     L2,
-    L3
+    L3,
 }
 
 impl From<u8> for Mp3Layer {
@@ -150,7 +149,7 @@ pub enum Channel {
     Mono,
     Dual,
     Stereo,
-    JointStereo
+    JointStereo,
 }
 
 impl From<u8> for Channel {
@@ -181,8 +180,8 @@ pub const AUDIO_SAMPLE_RATE_TABLE_M20: [u32; 4] = [22050, 24000, 16000, 0];
 pub const AUDIO_SAMPLE_RATE_TABLE_M25: [u32; 4] = [11025, 12000, 8000, 0];
 
 pub const AUDIO_BITRATE_TABLE_L1: [u32; 16] = [0, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448, 0];
-pub const AUDIO_BITRATE_TABLE_L2: [u32; 16] = [0, 32, 48, 56,  64,  80,  96, 112, 128, 160, 192, 224, 256, 320, 384, 0];
-pub const AUDIO_BITRATE_TABLE_L3: [u32; 16] = [0, 32, 40, 48,  56,  64,  80,  96, 112, 128, 160, 192, 224, 256, 320, 0];
+pub const AUDIO_BITRATE_TABLE_L2: [u32; 16] = [0, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 0];
+pub const AUDIO_BITRATE_TABLE_L3: [u32; 16] = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0];
 
 const MP3_SYNC_WORD: u16 = 0x07FF;
 
@@ -233,7 +232,7 @@ impl Parser {
                     body[1]
                 ]
             ),
-            io::bit::UIntParserEndian::BigEndian
+            io::bit::UIntParserEndian::BigEndian,
         );
         // dbg!(u16io.data);
 
@@ -254,7 +253,7 @@ impl Parser {
                     body[3]
                 ]
             ),
-            io::bit::UIntParserEndian::BigEndian
+            io::bit::UIntParserEndian::BigEndian,
         );
         let bitrate_index = u16io.read_range(0, 3);
         let sampling_rate_index = u16io.read_range(4, 5);
@@ -316,7 +315,7 @@ impl Parser {
                     body[1]
                 ]
             ),
-            io::bit::UIntParserEndian::BigEndian
+            io::bit::UIntParserEndian::BigEndian,
         );
         let audio_object_type = u16io.read_range(0, 4) as u8;
         let sampling_frequency_index = u16io.read_range(5, 8) as u8;
@@ -347,7 +346,7 @@ impl Parser {
                     NormalTagBody::Video(body) => body,
                     _ => return Err("Tag body type mismatch.".into()),
                 }
-            },
+            }
             _ => return Err("Encrypted video is not supported.".into()),
         };
 

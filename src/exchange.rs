@@ -1,18 +1,18 @@
 use crate::flv::header::FlvHeader;
 use crate::flv::meta::RawMetaData;
 use crate::flv::tag::Tag;
+use crate::fmpeg::remux_context::AudioCodecType;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::mpsc;
 use std::thread::JoinHandle;
-use crate::fmpeg::remux_context::AudioCodecType;
 
 pub struct Exchange {
     receiver: mpsc::Receiver<Packed>,
     pub sender: mpsc::Sender<Packed>,
 
-    pub channels: HashMap<Destination, mpsc::Sender<PackedContent>>
+    pub channels: HashMap<Destination, mpsc::Sender<PackedContent>>,
 }
 
 pub enum Destination {
@@ -56,7 +56,7 @@ impl PartialEq<Self> for Destination {
     }
 }
 
-impl Eq for Destination { }
+impl Eq for Destination {}
 
 pub trait ExchangeRegistrable {
     fn set_exchange(&mut self, sender: mpsc::Sender<Packed>);
@@ -71,7 +71,7 @@ impl Exchange {
         Exchange {
             receiver,
             sender,
-            channels: HashMap::new()
+            channels: HashMap::new(),
         }
     }
 
@@ -112,38 +112,38 @@ impl Exchange {
 
 pub struct Packed {
     pub packed_routing: Destination,
-    pub packed_content: PackedContent
+    pub packed_content: PackedContent,
 }
 
 pub enum PackedContent {
     ToCore(PackedContentToCore),
     ToDecoder(PackedContentToDecoder),
     ToDemuxer(PackedContentToDemuxer),
-    ToRemuxer(PackedContentToRemuxer)
+    ToRemuxer(PackedContentToRemuxer),
 }
 
 pub enum PackedContentToCore {
     Data(RemuxedData),
     DecoderConfig(MseDecoderConfig),
-    Command
+    Command,
 }
 
 pub enum RemuxedData {
     Header(Vec<u8>),
     Audio(Vec<u8>),
     Video(Vec<u8>),
-    EndOfSequence(EndOfSequenceType)
+    EndOfSequence(EndOfSequenceType),
 }
 
 pub enum EndOfSequenceType {
     Audio,
     Video,
-    Both
+    Both,
 }
 
 pub enum MseDecoderConfig {
     AudioCodec(AudioCodecConfig),
-    VideoCodec(VideoCodecConfig)
+    VideoCodec(VideoCodecConfig),
 }
 
 /// Note: mp3 in video is not supported by some browsers.
@@ -160,7 +160,7 @@ impl AudioCodecConfig {
         Self {
             conf_string: "".to_string(),
             audio_codec_type: codec_type,
-            audio_object_type: object_type
+            audio_object_type: object_type,
         }
     }
 
@@ -196,7 +196,7 @@ impl VideoCodecConfig {
             conf_string: "".to_string(),
             avc_profile_indication: profile_indication,
             avc_profile_compatibility: profile_compatibility,
-            avc_level_indication: level_indication
+            avc_level_indication: level_indication,
         }
     }
 
@@ -213,7 +213,7 @@ pub enum PackedContentToDecoder {
     StopDecoding,
     CloseWorkerThread,
 
-    Now
+    Now,
 }
 
 pub enum PackedContentToDemuxer {
@@ -224,7 +224,7 @@ pub enum PackedContentToDemuxer {
     StopDemuxing,
     CloseWorkerThread,
 
-    Now
+    Now,
 }
 
 pub enum PackedContentToRemuxer {
@@ -236,5 +236,5 @@ pub enum PackedContentToRemuxer {
     StopRemuxing,
     CloseWorkerThread,
 
-    Now
+    Now,
 }

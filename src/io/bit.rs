@@ -1,5 +1,5 @@
 pub struct BitIO {
-    byte: u8
+    byte: u8,
 }
 
 impl BitIO {
@@ -44,11 +44,11 @@ impl BitIO {
 
 pub enum UIntParserEndian {
     LittleEndian,
-    BigEndian
+    BigEndian,
 }
 pub struct U16BitIO {
     pub(crate) data: [u8; 2],
-    endian: UIntParserEndian
+    endian: UIntParserEndian,
 }
 
 impl U16BitIO {
@@ -69,7 +69,7 @@ impl U16BitIO {
         };
         Self {
             data,
-            endian
+            endian,
         }
     }
 
@@ -117,7 +117,7 @@ impl U16BitIO {
 
 pub struct U32BitIO {
     data: [u8; 4],
-    endian: UIntParserEndian
+    endian: UIntParserEndian,
 }
 
 impl U32BitIO {
@@ -138,7 +138,7 @@ impl U32BitIO {
         };
         Self {
             data,
-            endian
+            endian,
         }
     }
 

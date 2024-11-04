@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::flv::script::{ScriptData, ScriptTagBody};
+use std::collections::HashMap;
 
 pub struct MetaData {
     pub audio_codec_id: f64,
@@ -58,7 +58,7 @@ impl MetaData {
 }
 
 pub struct RawMetaData {
-    data: HashMap<String, ScriptData>
+    data: HashMap<String, ScriptData>,
 }
 
 impl RawMetaData {

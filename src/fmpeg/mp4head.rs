@@ -136,7 +136,7 @@ impl FixedPoint32 {
     #[inline]
     fn to_float(&self) -> f32 {
         self.integer as f32 + self.fraction as f32 / 65536.0
-   }
+    }
 }
 
 impl From<f32> for FixedPoint32 {
@@ -301,7 +301,7 @@ pub struct MovieBox {
 
     pub movie_header: MovieHeaderBox,
     pub tracks: Vec<TrackBox>,
-    pub movie_extend_box: MovieExtendBox
+    pub movie_extend_box: MovieExtendBox,
 }
 
 pub struct MovieBoxBuilder {
@@ -415,7 +415,7 @@ pub struct MovieHeaderBoxV0 {
     pub selection_time: u32,
     pub selection_duration: u32,
     pub current_time: u32,
-    pub next_track_id: u32
+    pub next_track_id: u32,
 }
 
 const MATRIX: [u8; 36] = [
@@ -452,7 +452,7 @@ impl MovieHeaderBoxV0 {
             selection_duration: 0,
             current_time: 0,
             // next_track_id = 1 + the count of all tracks (video + audio)
-            next_track_id
+            next_track_id,
         }
     }
 }
@@ -504,7 +504,7 @@ pub struct MovieHeaderBoxV0Builder {
     pub duration: u32,
     pub rate: FixedPoint32,
     pub volume: FixedPoint16,
-    pub next_track_id: u32
+    pub next_track_id: u32,
 }
 
 impl MovieHeaderBoxV0Builder {
@@ -516,7 +516,7 @@ impl MovieHeaderBoxV0Builder {
             duration: 0,
             rate: FixedPoint32::new(1, 0),
             volume: FixedPoint16::new(1, 0),
-            next_track_id: 0
+            next_track_id: 0,
         }
     }
 
@@ -576,7 +576,7 @@ impl MovieHeaderBoxV0Builder {
             self.duration,
             self.rate,
             self.volume,
-            self.next_track_id
+            self.next_track_id,
         )
     }
 }
@@ -606,7 +606,7 @@ pub struct MovieHeaderBoxV1 {
     pub selection_time: u32,
     pub selection_duration: u32,
     pub current_time: u32,
-    pub next_track_id: u32
+    pub next_track_id: u32,
 }
 
 impl MovieHeaderBoxV1 {
@@ -631,7 +631,7 @@ impl MovieHeaderBoxV1 {
             selection_time: 0,
             selection_duration: 0,
             current_time: 0,
-            next_track_id
+            next_track_id,
         }
     }
 }
@@ -678,7 +678,7 @@ pub struct MovieHeaderBoxV1Builder {
     pub duration: u64,
     pub rate: FixedPoint32,
     pub volume: FixedPoint16,
-    pub next_track_id: u32
+    pub next_track_id: u32,
 }
 
 impl MovieHeaderBoxV1Builder {
@@ -690,7 +690,7 @@ impl MovieHeaderBoxV1Builder {
             duration: 0,
             rate: FixedPoint32::new(1, 0),
             volume: FixedPoint16::new(1, 0),
-            next_track_id: 0
+            next_track_id: 0,
         }
     }
 
@@ -744,7 +744,7 @@ impl MovieHeaderBoxV1Builder {
             self.duration,
             self.rate,
             self.volume,
-            self.next_track_id
+            self.next_track_id,
         )
     }
 }
@@ -785,7 +785,7 @@ impl TrackBox {
             size: 0,
             box_type: ['t', 'r', 'a', 'k'],
             track_header_box,
-            media_box
+            media_box,
         }
     }
 }
@@ -906,7 +906,7 @@ pub struct TrackHeaderBoxV0Builder {
     pub track_id: u32,
     pub duration: u32,
     pub width: FixedPoint32,
-    pub height: FixedPoint32
+    pub height: FixedPoint32,
 }
 
 impl TrackHeaderBoxV0Builder {
@@ -917,7 +917,7 @@ impl TrackHeaderBoxV0Builder {
             track_id: 0,
             duration: 0,
             width: FixedPoint32::new(1, 0),
-            height: FixedPoint32::new(1, 0)
+            height: FixedPoint32::new(1, 0),
         }
     }
 
@@ -964,7 +964,7 @@ impl TrackHeaderBoxV0Builder {
             self.track_id,
             self.duration,
             self.width,
-            self.height
+            self.height,
         )
     }
 }
@@ -1063,7 +1063,7 @@ pub struct MediaBox {
 
     pub media_header: MediaHeaderBoxV0,
     pub media_handler_box: HandlerBox,
-    pub media_info_box: MediaInfoBox
+    pub media_info_box: MediaInfoBox,
 }
 
 impl MediaBox {
@@ -1073,7 +1073,7 @@ impl MediaBox {
             box_type: ['m', 'd', 'i', 'a'],
             media_header,
             media_handler_box,
-            media_info_box
+            media_info_box,
         }
     }
 }
@@ -1233,7 +1233,7 @@ pub struct HandlerBox {
     pub component_type: [u8; 4],
     pub handler_type: [char; 4],
     pub reserved: [u8; 12],
-    pub name: [u8; 13]
+    pub name: [u8; 13],
 }
 
 impl HandlerBox {
@@ -1247,7 +1247,7 @@ impl HandlerBox {
             component_type: [0; 4],
             handler_type,
             reserved: [0; 12],
-            name: name.as_bytes().try_into().unwrap()
+            name: name.as_bytes().try_into().unwrap(),
         }
     }
 }
@@ -1413,7 +1413,7 @@ impl ISerializable for AudioMediaHandlerBox {
     fn size(&self) -> u32 {
         16
     }
- }
+}
 
 #[derive(Debug)]
 pub struct DataInformationBox;
@@ -1583,7 +1583,7 @@ impl SampleDescriptionTableBoxBuilder {
             version: 0,
             flags: U24::new(0),
             entry_count: 0,
-            sample_description_table: vec![]
+            sample_description_table: vec![],
         }
     }
 
@@ -1600,7 +1600,7 @@ impl SampleDescriptionTableBoxBuilder {
             version: self.version,
             flags: self.flags,
             entry_count: self.entry_count,
-            sample_description_table: self.sample_description_table
+            sample_description_table: self.sample_description_table,
         }
     }
 }
@@ -1644,7 +1644,7 @@ pub mod aac_utils {
         AacSsr,
         AacLtp,
         AacSbr,
-        AacScalable
+        AacScalable,
     }
 
     impl Into<u16> for AacObjectType {
@@ -1690,7 +1690,7 @@ pub mod aac_utils {
                 4 => AacObjectType::AacLtp,
                 5 => AacObjectType::AacSbr,
                 6 => AacObjectType::AacScalable,
-               _ => panic!("Invalid AAC object type")
+                _ => panic!("Invalid AAC object type")
             }
         }
     }
@@ -1728,8 +1728,8 @@ pub mod aac_utils {
                 SamplingFreqIndex::Freq16000 => 0x8,
                 SamplingFreqIndex::Freq12000 => 0x9,
                 SamplingFreqIndex::Freq11025 => 0xa,
-                SamplingFreqIndex::Freq8000  => 0xb,
-                SamplingFreqIndex::Freq7350  => 0xc,
+                SamplingFreqIndex::Freq8000 => 0xb,
+                SamplingFreqIndex::Freq7350 => 0xc,
                 SamplingFreqIndex::FreqExplicit => 0xf,
             }
         }
@@ -1750,8 +1750,8 @@ pub mod aac_utils {
                 SamplingFreqIndex::Freq16000 => 0x8,
                 SamplingFreqIndex::Freq12000 => 0x9,
                 SamplingFreqIndex::Freq11025 => 0xa,
-                SamplingFreqIndex::Freq8000  => 0xb,
-                SamplingFreqIndex::Freq7350  => 0xc,
+                SamplingFreqIndex::Freq8000 => 0xb,
+                SamplingFreqIndex::Freq7350 => 0xc,
                 SamplingFreqIndex::FreqExplicit => 0xf,
             }
         }
@@ -1797,7 +1797,7 @@ pub mod aac_utils {
                 ChannelConfig::Three => 0x3,
                 ChannelConfig::Four => 0x4,
                 ChannelConfig::Five => 0x5,
-                ChannelConfig::Six=> 0x6,
+                ChannelConfig::Six => 0x6,
                 ChannelConfig::Seven => 0x7,
                 ChannelConfig::Eight => 0x8,
             }
@@ -1928,7 +1928,7 @@ pub mod aac_utils {
                 frame_length_flag: FrameLengthFlag::Sample960_1,
                 core_coder_dependent_flag: CoreCoderDependentFlag::No,
                 extension_flag: ExtensionFlag::No,
-           }
+            }
         }
     }
 
@@ -1970,7 +1970,7 @@ pub mod aac_utils {
                 channel_config: ChannelConfig::Stereo,
                 frame_length_flag: FrameLengthFlag::Sample1024_0,
                 core_coder_dependent_flag: CoreCoderDependentFlag::No,
-                extension_flag: ExtensionFlag::No
+                extension_flag: ExtensionFlag::No,
             }
         }
 
@@ -2018,7 +2018,7 @@ pub mod aac_utils {
                 channel_config: self.channel_config,
                 frame_length_flag: self.frame_length_flag,
                 core_coder_dependent_flag: self.core_coder_dependent_flag,
-                extension_flag: self.extension_flag
+                extension_flag: self.extension_flag,
             }
         }
     }
@@ -2042,7 +2042,7 @@ impl AudioExtendedDescriptionBox {
             box_type: ['e', 's', 'd', 's'],
             version: 0,
             flags: U24::from(0),
-            aac_audio_specific_config: spec_config
+            aac_audio_specific_config: spec_config,
         }
     }
 }
@@ -2063,7 +2063,7 @@ impl Default for AudioExtendedDescriptionBox {
                     frame_length_flag: aac_utils::FrameLengthFlag::Sample1024_0,
                     core_coder_dependent_flag: aac_utils::CoreCoderDependentFlag::No,
                     extension_flag: aac_utils::ExtensionFlag::No,
-            })
+                }),
         }
     }
 }
@@ -2196,7 +2196,7 @@ impl Mp4aDescriptionBoxBuilder {
             num_audio_channels: 0,
             spec_config: aac_utils::AacAudioSpecConfLike::AacAudioSpecificConfig(
                 aac_utils::AacAudioSpecificConfigBox::default()
-            )
+            ),
         }
     }
 
@@ -2338,7 +2338,7 @@ pub mod avc1_utils {
 
             let mut size = self.size();
 
-            let mut  serialized = size.to_be_bytes().to_vec();
+            let mut serialized = size.to_be_bytes().to_vec();
             let mut box_type = ['a', 'v', 'c', 'C'].map(|c| c as u8).to_vec();
             serialized.append(&mut box_type);
             serialized.append(&mut raw);
@@ -2401,7 +2401,7 @@ impl Avc1DescriptionBox {
             compressor_name: [0; 32],
             depth: 24,
             color_table_id: -1,
-            avcc_box
+            avcc_box,
         }
     }
 }

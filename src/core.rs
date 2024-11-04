@@ -28,7 +28,7 @@ impl Core {
             match data.packed_content {
                 PackedContent::ToCore(PackedContentToCore::Data(data)) => {
                     self.buffer.push_back(data);
-                },
+                }
                 PackedContent::ToCore(PackedContentToCore::DecoderConfig(conf)) => {
                     match conf {
                         MseDecoderConfig::AudioCodec(audio_codec) => {
@@ -38,7 +38,7 @@ impl Core {
                             self.video_codec_conf = Some(video_codec);
                         }
                     }
-                },
+                }
                 _ => {}
             };
         };

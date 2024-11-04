@@ -1,3 +1,4 @@
+use crate::core::IConsumable;
 use crate::exchange::{Destination, Packed, PackedContent, PackedContentToDecoder, PackedContentToDemuxer, PackedContentToRemuxer, RemuxedData};
 use crate::flv::demuxer::Demuxer;
 use crate::flv::header::{AudioTagHeader, EncryptionTagHeader, FilterParameters, FlvHeader, TagHeader, VideoTagHeader};
@@ -7,14 +8,13 @@ use crate::io::bit::BitIO;
 use std::collections::VecDeque;
 use std::thread;
 use std::thread::JoinHandle;
-use crate::core::IConsumable;
 
 pub struct Decoder {
     pack_buffer: VecDeque<Packed>,
     data: VecDeque<u8>,
     previous_tag_size: u32,
     decoding: bool,
-    demuxer: Demuxer
+    demuxer: Demuxer,
 }
 
 impl Decoder {
@@ -24,7 +24,7 @@ impl Decoder {
             data,
             previous_tag_size: 0,
             decoding: false,
-            demuxer: Demuxer::new()
+            demuxer: Demuxer::new(),
         }
     }
 
@@ -249,7 +249,7 @@ impl Decoder {
 
     pub fn peek_tag_size(&mut self) -> Result<u32, Box<dyn std::error::Error>> {
         if self.data.len() < 4 {
-            return Err("Insufficient data to peek buffer size.".into())
+            return Err("Insufficient data to peek buffer size.".into());
         }
         let mut data_size = self.data.iter_mut()
             .skip(1)
@@ -258,7 +258,7 @@ impl Decoder {
             .collect::<Vec<u8>>();
         let mut extended = vec![0];
         extended.append(&mut data_size);
-        let data_size = u32::from_be_bytes(<[u8;4]>::try_from(extended.as_slice())?);
+        let data_size = u32::from_be_bytes(<[u8; 4]>::try_from(extended.as_slice())?);
         Ok(data_size)
     }
 
@@ -434,7 +434,7 @@ impl Decoder {
                 Box::new(
                     std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
-                        format!("Tag size mismatch: expected {}, read {}.", previous_tag_size, self.previous_tag_size)
+                        format!("Tag size mismatch: expected {}, read {}.", previous_tag_size, self.previous_tag_size),
                     )
                 )
             )
@@ -498,7 +498,6 @@ impl Decoder {
 }
 
 impl Decoder {
-
     pub fn send(&mut self, pack: Packed) -> Result<(), Box<dyn std::error::Error>> {
         self.pack_buffer.push_back(pack);
         Ok(())
